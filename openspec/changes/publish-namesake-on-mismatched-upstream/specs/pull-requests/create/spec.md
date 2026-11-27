@@ -23,3 +23,14 @@ When opening a pull request from a head branch that is unpublished or covered by
 - **WHEN** the resolved PR repository (for example via `gh repo set-default`) does not match any configured remote's push URL and the head branch needs publishing
 - **THEN** the dialog disables pull request creation and explains that cross-repository pull requests are not supported
 - **AND** GitLane does not publish the branch or submit a pull request
+
+#### Scenario: The effective push destination changed after the dialog resolved the repository
+
+- **WHEN** Git resolves an effective push URL outside the repository shown by the dialog
+- **THEN** GitLane stops before publishing and explains the destination mismatch, including when HTTP(S) endpoints differ by effective port
+
+#### Scenario: Publishing changes the repository selected by the forge
+
+- **WHEN** publishing succeeds but the forge subsequently resolves a different repository from the one verified for publishing
+- **THEN** GitLane does not submit the pull request and explains that the repository changed
+- **AND** the open dialog retains the originally verified repository for subsequent attempts

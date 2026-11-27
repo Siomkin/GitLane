@@ -221,116 +221,54 @@ export function resolvePrPublishPlan(options: {
   prRemote: string | null | undefined;
 }): PrPublishPlan {
   const { head, headInfo, branches, remotes, forgeResolved, prRemote } = options;
-  if (!head || !headInfo) {
-    return { publishTarget: null, publishRemote: null, crossRepoError: null, awaitingForge: false };
-  }
+  const noPublish = {
+    publishTarget: null,
+    publishRemote: null,
+    crossRepoError: null,
+    awaitingForge: false,
+  };
+  if (!head || !headInfo) return noPublish;
+
+  const { upstream, upstreamRemote, pushRemote } = headInfo;
+  const needsPublish = !upstream || shouldPublishNamesake(headInfo, branches);
+  if (needsPublish && !forgeResolved) return { ...noPublish, awaitingForge: true };
+  if (prRemote === null) return { ...noPublish, crossRepoError: NO_MATCHING_PR_REMOTE };
 
   const allRemoteNames = [...new Set([...remotes.map((r) => r.name), ...remoteNamesOf(branches)])];
-  const publishNamesake = shouldPublishNamesake(headInfo, branches);
-  const needsPublish = !headInfo.upstream || publishNamesake;
-  const hasPrRemote = prRemote !== undefined;
-
   if (needsPublish) {
-    if (!forgeResolved) {
-      return { publishTarget: null, publishRemote: null, crossRepoError: null, awaitingForge: true };
+    const fallback = defaultPublishTarget(branches, head, upstream, false);
+    const fallbackRemote = remoteNameForUpstream(fallback, allRemoteNames);
+    // Older agents use "origin" even when no push remote was configured.
+    const legacyOrigin = pushRemote === "origin" &&
+      allRemoteNames.length > 0 && !allRemoteNames.includes("origin");
+    const configuredRemote = upstream
+      ? (!upstreamRemote || upstreamRemote === "." ? fallbackRemote : upstreamRemote)
+      : (pushRemote && pushRemote !== "." && !legacyOrigin ? pushRemote : null);
+    if (prRemote !== undefined && (upstream || configuredRemote) && configuredRemote !== prRemote) {
+      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, prRemote) };
     }
-    if (prRemote === null) {
-      return {
-        publishTarget: null,
-        publishRemote: null,
-        crossRepoError: NO_MATCHING_PR_REMOTE,
-        awaitingForge: false,
-      };
-    }
-    if (!headInfo.upstream) {
-      const explicitPushRemote =
-        headInfo.pushRemote &&
-        headInfo.pushRemote !== "." &&
-        (headInfo.pushRemote !== "origin" ||
-          allRemoteNames.length === 0 ||
-          allRemoteNames.includes("origin"))
-          ? headInfo.pushRemote
-          : null;
-      if (explicitPushRemote && hasPrRemote && explicitPushRemote !== prRemote) {
-        return {
-          publishTarget: null,
-          publishRemote: null,
-          crossRepoError: mismatchedPrRemoteError(head, prRemote),
-          awaitingForge: false,
-        };
-      }
-      if (prRemote) {
-        return {
-          publishTarget: `${prRemote}/${head}`,
-          publishRemote: prRemote,
-          crossRepoError: null,
-          awaitingForge: false,
-        };
-      }
-      const fallback = defaultPublishTarget(branches, head);
-      return {
-        publishTarget: fallback,
-        publishRemote: remoteNameForUpstream(fallback, allRemoteNames),
-        crossRepoError: null,
-        awaitingForge: false,
-      };
-    }
-    const targetRemote =
-      headInfo.upstreamRemote && headInfo.upstreamRemote !== "."
-        ? headInfo.upstreamRemote
-        : remoteNameForUpstream(
-            defaultPublishTarget(branches, head, headInfo.upstream, false),
-            allRemoteNames,
-          );
-    if (hasPrRemote && targetRemote !== prRemote) {
-      return {
-        publishTarget: null,
-        publishRemote: null,
-        crossRepoError: mismatchedPrRemoteError(head, prRemote),
-        awaitingForge: false,
-      };
-    }
-    const resolvedRemote = prRemote ?? targetRemote;
+
+    const publishRemote = prRemote || (upstream ? configuredRemote : null);
     return {
-      publishTarget: resolvedRemote
-        ? `${resolvedRemote}/${head}`
-        : defaultPublishTarget(branches, head, headInfo.upstream, false),
-      publishRemote: resolvedRemote,
-      crossRepoError: null,
-      awaitingForge: false,
+      ...noPublish,
+      publishTarget: publishRemote ? `${publishRemote}/${head}` : fallback,
+      publishRemote: publishRemote ?? fallbackRemote,
     };
   }
 
-  if (hasPrRemote) {
-    if (prRemote === null) {
-      return {
-        publishTarget: null,
-        publishRemote: null,
-        crossRepoError: NO_MATCHING_PR_REMOTE,
-        awaitingForge: false,
-      };
-    }
-    const effectiveRemote =
-      headInfo.pushRemote ??
-      headInfo.upstreamRemote ??
-      (headInfo.upstream ? remoteNameForUpstream(headInfo.upstream, allRemoteNames) : null);
-    if (effectiveRemote && effectiveRemote !== "." && effectiveRemote !== prRemote) {
-      const existsOnPrRemote = branches.some(
-        (b) =>
-          b.kind === BranchKind.Remote &&
-          remoteOfBranch(b, allRemoteNames) === prRemote &&
-          shortName(b) === head,
-      );
-      if (!existsOnPrRemote) {
-        return {
-          publishTarget: null,
-          publishRemote: null,
-          crossRepoError: mismatchedPrRemoteError(head, prRemote),
-          awaitingForge: false,
-        };
-      }
+  const effectiveRemote = pushRemote ?? upstreamRemote ??
+    (upstream ? remoteNameForUpstream(upstream, allRemoteNames) : null);
+  if (prRemote !== undefined && effectiveRemote && effectiveRemote !== "." && effectiveRemote !== prRemote) {
+    const existsOnPrRemote = branches.some(
+      (branch) =>
+        branch.kind === BranchKind.Remote &&
+        remoteOfBranch(branch, allRemoteNames) === prRemote &&
+        shortName(branch) === head,
+    );
+    if (!existsOnPrRemote) {
+      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, prRemote) };
     }
   }
 
-  return { publishTarget: null, publishRemote: null, crossRepoError: null, awaitingForge: false };
+  return noPublish;
 }

@@ -132,6 +132,7 @@ mod tests {
 
     fn ctx() -> GithubContext {
         GithubContext {
+            pr_repository_id: String::new(),
             workdir: "/nonexistent".into(),
             repository: GithubRepository {
                 host: ApiAuthority::new("github.com".into()),

@@ -174,6 +174,8 @@ export interface RepoForge {
    * resolved by the active PR provider, or null when no configured remote
    * pushes to that repository. Optional for fixtures; the backend always sends it. */
   prRemote?: string | null;
+  /** Identifies the resolved PR repository across publish and create. */
+  prRepositoryId?: string | null;
 }
 
 /** What GitLane can do with pull requests on one forge — declared once by the

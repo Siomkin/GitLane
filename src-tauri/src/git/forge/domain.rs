@@ -32,7 +32,49 @@ pub struct GithubRepository {
 pub struct GithubContext {
     pub(in crate::git::forge) workdir: String,
     pub(in crate::git::forge) repository: GithubRepository,
+    pub(in crate::git::forge) pr_repository_id: String,
     pub(in crate::git::forge) account: Option<GithubAccountRef>,
+}
+
+impl GithubContext {
+    pub(crate) fn check_pr_repository(&self, expected: &str) -> Result<(), GithubError> {
+        if self.pr_repository_id == expected {
+            Ok(())
+        } else {
+            Err(GithubError::CommandFailed(
+                "The pull request repository changed. Check the repository and reopen the pull request dialog.".into(),
+            ))
+        }
+    }
+
+    pub(crate) fn check_pr_push_urls(&self, urls: &[String]) -> Result<(), GithubError> {
+        let project = self.repository.project();
+        if !urls.is_empty()
+            && urls.iter().all(|url| {
+                super::resolution::pr_remote::url_matches_target(
+                    url,
+                    self.repository.host.as_ref(),
+                    &project,
+                )
+            })
+        {
+            Ok(())
+        } else {
+            Err(GithubError::CommandFailed(
+                "The selected remote pushes outside the pull request repository.".into(),
+            ))
+        }
+    }
+}
+
+impl GithubRepository {
+    pub(super) fn project(&self) -> String {
+        if self.owner.is_empty() {
+            self.name.clone()
+        } else {
+            format!("{}/{}", self.owner, self.name)
+        }
+    }
 }
 
 #[derive(Debug)]

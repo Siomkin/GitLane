@@ -23,6 +23,7 @@ pub use push::{
     push_branch, push_tag,
 };
 
+pub(crate) use config::effective_push_endpoints;
 pub(super) use config::push_endpoint_token;
 pub(super) use push::{push_destination, split_configured_remote};
 

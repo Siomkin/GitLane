@@ -72,7 +72,12 @@ export interface RepoWriteActions {
    * remote (origin fallback). */
   pushBranch: (branch: string) => Promise<string>;
   /** Push a branch to `remote/branch` and set that as its upstream. */
-  publishBranch: (branch: string, upstream: string, remote?: string | null) => Promise<string>;
+  publishBranch: (
+    branch: string,
+    upstream: string,
+    remote?: string | null,
+    prRepositoryId?: string,
+  ) => Promise<string>;
   mergeInto: (from: string, to: string) => Promise<string>;
   fastForwardTo: (from: string, to: string) => Promise<string>;
   /** Rebase the explicit source branch/revision onto the target. */

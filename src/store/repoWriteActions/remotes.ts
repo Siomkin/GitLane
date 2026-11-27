@@ -61,7 +61,7 @@ export function createRemoteActions(
         return `Pushed ${branch}`;
       })),
 
-    publishBranch: (branch, upstream, explicitRemote) =>
+    publishBranch: (branch, upstream, explicitRemote, prRepositoryId) =>
       withActiveRefWrite(set, get, [{ name: branch, kind: "local" }], () => runOp(get, async (summary) => {
         const remote =
           explicitRemote ??
@@ -78,6 +78,7 @@ export function createRemoteActions(
           upstream,
           auth,
           explicitRemote ?? null,
+          prRepositoryId,
         ));
         return `Published ${branch} to ${upstream}`;
       })),

@@ -176,6 +176,7 @@ export const remotesApi = {
     upstream: string,
     auth?: GitTransportAuthRef | null,
     remote?: string | null,
+    prRepositoryId?: string,
   ) =>
     parse(
       z.string(),
@@ -186,6 +187,7 @@ export const remotesApi = {
         upstream,
         remote: remote ?? null,
         auth: auth ?? null,
+        ...(prRepositoryId ? { prRepositoryId } : {}),
       }),
       "publish_branch",
     ),

@@ -255,12 +255,16 @@ pub fn context(
     // its token/keychain locator out of every provider until the local
     // remote authority has been proven compatible below.
     let repository = provider.resolve_repository(workdir, None)?;
+    let project = repository.project();
+    let pr_repository_id =
+        super::resolution::pr_remote::repository_fingerprint(&repository.host, &project);
     let repository = validate_repository_authority(workdir, repository, account.as_ref())?;
     Ok((
         provider,
         GithubContext {
             workdir: workdir.to_string(),
             repository,
+            pr_repository_id,
             account,
         },
     ))
@@ -320,11 +324,7 @@ fn validate_repository_authority(
     mut repository: GithubRepository,
     account: Option<&GithubAccountRef>,
 ) -> Result<GithubRepository, GithubError> {
-    let project = if repository.owner.is_empty() {
-        repository.name.clone()
-    } else {
-        format!("{}/{}", repository.owner, repository.name)
-    };
+    let project = repository.project();
     let remote = forge::remote_api_authority_for_project(workdir, &repository.host, &project);
 
     let Some(account) = account else {
@@ -533,6 +533,7 @@ mod tests {
     #[test]
     fn every_absent_capability_is_a_refusing_adapter_method() {
         let ctx = GithubContext {
+            pr_repository_id: String::new(),
             workdir: "/nonexistent".into(),
             repository: GithubRepository {
                 host: forge::ApiAuthority::new("example.test".into()),
@@ -588,6 +589,7 @@ mod tests {
     #[test]
     fn a_ghes_auth_failure_names_the_repository_host_and_bound_account() {
         let ctx = GithubContext {
+            pr_repository_id: String::new(),
             workdir: "/nonexistent".into(),
             repository: GithubRepository {
                 host: forge::ApiAuthority::new("ghe.example.test:8443".into()),

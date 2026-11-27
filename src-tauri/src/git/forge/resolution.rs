@@ -1,12 +1,12 @@
 //! libgit2-backed configured-remote enumeration and provider resolution.
 
 mod gh_resolved;
-mod pr_remote;
+pub(super) mod pr_remote;
 
 use git2::Repository;
 
 use gh_resolved::gh_resolved_project;
-use pr_remote::pr_remote_for;
+use pr_remote::{pr_remote_for, repository_fingerprint, resolved_pr_project};
 
 use super::parsing::{
     api_host_for, classify_host, credential_host_for_url, remote_host, remote_path,
@@ -56,6 +56,7 @@ pub fn summary(path: &str) -> RepoForge {
                 let capabilities = super::service::provider_for(Some(&remote))
                     .ok()
                     .map(|provider| provider.identity().capabilities);
+                let pr_project = resolved_pr_project(&repo, kind);
                 return RepoForge {
                     has_remote: true,
                     kind: Some(kind.key().to_string()),
@@ -63,7 +64,11 @@ pub fn summary(path: &str) -> RepoForge {
                     host: Some(host),
                     web_url: web,
                     capabilities,
-                    pr_remote: pr_remote_for(&repo, kind),
+                    pr_remote: pr_project
+                        .as_ref()
+                        .and_then(|(authority, project)| pr_remote_for(&repo, authority, project)),
+                    pr_repository_id: pr_project
+                        .map(|(authority, project)| repository_fingerprint(&authority, &project)),
                 };
             }
         }
@@ -76,6 +81,7 @@ pub fn summary(path: &str) -> RepoForge {
         web_url: first_web,
         capabilities: None,
         pr_remote: None,
+        pr_repository_id: None,
     }
 }
 
@@ -383,9 +389,9 @@ mod tests {
 
     // --- project_for: parse (host, project_path) from the configured remote ---
 
-    struct TempRepo(std::path::PathBuf);
+    pub(super) struct TempRepo(pub(super) std::path::PathBuf);
     impl TempRepo {
-        fn init(tag: &str, remote_url: &str) -> Self {
+        pub(super) fn init(tag: &str, remote_url: &str) -> Self {
             use std::sync::atomic::{AtomicU32, Ordering};
             static SEQ: AtomicU32 = AtomicU32::new(0);
             let n = SEQ.fetch_add(1, Ordering::Relaxed);
@@ -679,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn summary_pr_remote_matches_ssh_fetch_with_https_custom_port_push_url() {
+    fn summary_pr_remote_rejects_custom_https_push_port_without_pr_port() {
         let repo = TempRepo::init("pr-remote-ssh-https-port", "git@gitlab.com:group/app.git");
         {
             let opened = Repository::open(&repo.0).unwrap();
@@ -687,10 +693,7 @@ mod tests {
                 .remote_set_pushurl("origin", Some("https://gitlab.com:8443/group/app.git"))
                 .unwrap();
         }
-        assert_eq!(
-            summary(repo.0.to_str().unwrap()).pr_remote.as_deref(),
-            Some("origin"),
-        );
+        assert_eq!(summary(repo.0.to_str().unwrap()).pr_remote, None);
     }
 
     #[test]

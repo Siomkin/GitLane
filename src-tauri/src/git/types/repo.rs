@@ -101,6 +101,8 @@ pub struct RepoForge {
     /// pushes to that repository (for example, a fork with `gh repo set-default`
     /// pointing at the parent).
     pub pr_remote: Option<String>,
+    /// Identifies the PR repository seen by the dialog across publish and create.
+    pub pr_repository_id: Option<String>,
 }
 
 /// The pull-request features one forge's adapter implements. The single

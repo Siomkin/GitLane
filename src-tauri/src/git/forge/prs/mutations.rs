@@ -156,6 +156,7 @@ mod tests {
 
     fn create_input(title: &str) -> PrCreateInput {
         PrCreateInput {
+            pr_repository_id: None,
             base: "main".to_string(),
             head: "feat".to_string(),
             title: title.to_string(),

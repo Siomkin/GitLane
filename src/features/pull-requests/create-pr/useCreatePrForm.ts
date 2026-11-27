@@ -79,6 +79,7 @@ export function useCreatePrForm() {
   // once `createPr` reaches the store, which leaves the publish window open to
   // a second click — two pushes and two pull requests.
   const [submitting, setSubmitting] = useState(false);
+  const [pinnedPrRepositoryId, setPinnedPrRepositoryId] = useState<string>();
   const busyRef = useRef(false);
 
   // Stacking only holds inside one repository, and only on a forge whose adapter
@@ -173,7 +174,7 @@ export function useCreatePrForm() {
   // when its destination matches the PR's resolved target repository; otherwise
   // block submission and explain that cross-repository PRs are unsupported.
   const headInfo = branches.find((b) => b.kind === BranchKind.Local && b.name === head);
-  const { publishTarget, publishRemote, crossRepoError, awaitingForge } = resolvePrPublishPlan({
+  const { publishTarget, publishRemote, crossRepoError: routingError, awaitingForge } = resolvePrPublishPlan({
     head,
     headInfo,
     branches,
@@ -181,6 +182,15 @@ export function useCreatePrForm() {
     forgeResolved: forge !== null,
     prRemote: forge?.prRemote,
   });
+
+  const currentPrRepositoryId = forge?.prRepositoryId ?? undefined;
+  const prRepositoryId = pinnedPrRepositoryId ?? (publishTarget ? currentPrRepositoryId : undefined);
+  let crossRepoError = routingError;
+  if (pinnedPrRepositoryId && pinnedPrRepositoryId !== currentPrRepositoryId) {
+    crossRepoError = "The pull request repository changed. Check the repository and reopen the pull request dialog.";
+  } else if (publishTarget && !prRepositoryId) {
+    crossRepoError = "GitLane could not verify the pull request repository for publishing. Push the branch manually or update the remote agent.";
+  }
 
   const canSubmit =
     !!title.trim() &&
@@ -198,6 +208,9 @@ export function useCreatePrForm() {
     // the keyed PR-action runner's `busyRef`.
     if (!canSubmit || pending || busyRef.current) return;
     busyRef.current = true;
+    // A refresh during publish can turn the next submit into a create-only
+    // operation. Keep the selected destination even if publish fails partway.
+    if (publishTarget) setPinnedPrRepositoryId(prRepositoryId);
     // The dialog may be closed, reopened, or pointed at another repo while the
     // create is in flight; only the instance that started it may close on the
     // answer (the generation guard mirrors the previous dialog's contract).
@@ -214,7 +227,7 @@ export function useCreatePrForm() {
     try {
       const ok = await run(async () => {
         if (publishTarget) {
-          await publishBranch(head, publishTarget, publishRemote);
+          await publishBranch(head, publishTarget, publishRemote, prRepositoryId);
           // Publishing can take a while, and the dialog stays interactive
           // behind it. If it was closed, reopened, or pointed at another repo
           // in the meantime, the pull request must not be created at all —
@@ -236,14 +249,7 @@ export function useCreatePrForm() {
         // base mode, so the link step is skipped entirely.
         const stackBelow = stacked ? [...chain].reverse().map(({ num, url }) => ({ num, url })) : [];
         return createPr(
-          {
-            base: targetBranch,
-            head,
-            title: title.trim(),
-            body,
-            draft,
-            reviewers,
-          },
+          { base: targetBranch, head, title: title.trim(), body, draft, reviewers, prRepositoryId },
           stackBelow,
         );
       }, ownsResult);

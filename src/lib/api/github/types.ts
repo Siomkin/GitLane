@@ -164,6 +164,8 @@ export interface PrStack {
  * positional arguments — the backend threads it through service, trait, and
  * three providers, so a new field widens one shape instead of six signatures. */
 export interface PrCreateInput {
+  /** Repository verified by the dialog before publishing the PR head. */
+  prRepositoryId?: string;
   base: string;
   head: string;
   title: string;

@@ -453,6 +453,7 @@ describe("CreatePrDialog on an unpublished branch", () => {
         webUrl: "https://github.com/o/r",
         capabilities: capabilitiesFor(ForgeKind.GitHub),
         prRemote: "origin",
+        prRepositoryId: "pr-repository",
       },
       remotes: [
         {
@@ -482,7 +483,7 @@ describe("CreatePrDialog on an unpublished branch", () => {
     await userEvent.type(screen.getByPlaceholderText("Title"), "First push");
     await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
 
-    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x", "origin"));
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x", "origin", "pr-repository"));
     await waitFor(() => expect(createPr).toHaveBeenCalled());
   });
 
@@ -809,6 +810,7 @@ describe("CreatePrDialog publish target & cross-repository guard", () => {
     webUrl: "https://github.com/o/r",
     capabilities: capabilitiesFor(ForgeKind.GitHub),
     prRemote,
+    prRepositoryId: "pr-repository",
   });
 
   it("publishes a mismatched-upstream branch under its own name when its remote matches prRemote", async () => {
@@ -840,11 +842,55 @@ describe("CreatePrDialog publish target & cross-repository guard", () => {
       await userEvent.type(screen.getByPlaceholderText("Title"), "Feature PR");
       await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
 
-      await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x", "origin"));
+      await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x", "origin", "pr-repository"));
       await waitFor(() =>
-        expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x" }), []),
+        expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x", prRepositoryId: "pr-repository" }), []),
       );
       resolve("https://github.com/o/r/pull/101");
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("keeps retries tied to the repository that was verified before publishing", async () => {
+    const branch = { kind: "local", name: "feat/x", target: "aaa", isHead: true, upstream: null };
+    const publishBranch = vi.fn(async () => {
+      useRepo.setState({
+        forge: { ...githubForge("origin"), prRepositoryId: "different-repository" },
+        branches: [
+          { ...branch, upstream: "publish/feat/x", upstreamRemote: "publish", pushRemote: "publish" },
+          { kind: "remote", name: "origin/feat/x", remote: "origin", target: "bbb" },
+          { kind: "local", name: "develop" },
+        ] as never,
+      });
+      return "published";
+    });
+    const createPr = vi.fn()
+      .mockRejectedValueOnce(new Error("The pull request repository changed."))
+      .mockResolvedValueOnce("https://github.com/o/r/pull/101");
+    usePulls.setState({ createPr });
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge("publish"),
+      branches: [branch, { kind: "local", name: "develop" }] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Feature PR");
+      await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+
+      await waitFor(() => expect(createPr).toHaveBeenCalledTimes(1));
+      const retry = await screen.findByRole("button", { name: "Create pull request" });
+      expect(screen.getByRole("alert")).toHaveTextContent("The pull request repository changed.");
+      expect(retry).toBeDisabled();
+      await userEvent.click(retry);
+      expect(createPr).toHaveBeenCalledTimes(1);
+
+      act(() => useRepo.setState({ forge: githubForge("publish") }));
+      await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
+      await waitFor(() => expect(createPr).toHaveBeenCalledTimes(2));
+      expect(createPr).toHaveBeenNthCalledWith(2, expect.objectContaining({ head: "feat/x", prRepositoryId: "pr-repository" }), []);
+      expect(publishBranch).toHaveBeenCalledTimes(1);
     } finally {
       useRepo.setState({ publishBranch: realPublishBranch });
     }
@@ -1012,7 +1058,7 @@ describe("CreatePrDialog publish target & cross-repository guard", () => {
       await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
 
       await waitFor(() =>
-        expect(publishBranch).toHaveBeenCalledWith("feat/topic", "origin/feat/topic", "origin"),
+        expect(publishBranch).toHaveBeenCalledWith("feat/topic", "origin/feat/topic", "origin", "pr-repository"),
       );
       await waitFor(() => expect(createPr).toHaveBeenCalled());
       resolve("https://github.com/o/r/pull/103");
@@ -1042,8 +1088,8 @@ describe("CreatePrDialog publish target & cross-repository guard", () => {
       await userEvent.type(screen.getByPlaceholderText("Title"), "Custom remote PR");
       await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
 
-      await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "team/feat/x", "team"));
-      await waitFor(() => expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x" }), []));
+      await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "team/feat/x", "team", "pr-repository"));
+      await waitFor(() => expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x", prRepositoryId: "pr-repository" }), []));
       resolve("https://github.com/o/r/pull/102");
     } finally {
       useRepo.setState({ publishBranch: realPublishBranch });
