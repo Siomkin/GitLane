@@ -120,6 +120,54 @@ describe("deriveBranchContextMenuPolicy", () => {
     });
 
     expect(policy.needsPublishPrompt).toBe(true);
+    expect(policy.canForcePush).toBe(false);
+  });
+
+  it.each(["ahead", "diverged"] as const)(
+    "requires publish and hides force-push when %s against a differently-named upstream",
+    (status) => {
+      const policy = derive({
+        branch: "feat/mcp",
+        isCurrent: true,
+        currentBranch: "feat/mcp",
+        branches: [
+          {
+            ...localBranch("feat/mcp", "feat-oid"),
+            isHead: true,
+            upstream: "origin/develop",
+            upstreamRemote: "origin",
+            pushRemote: "origin",
+            sync: { status, upstream: "origin/develop", ahead: 1, behind: status === "diverged" ? 1 : 0 },
+          },
+          remoteBranch("origin/develop"),
+        ],
+      });
+
+      expect(policy.needsPublishPrompt).toBe(true);
+      expect(policy.canForcePush).toBe(false);
+    },
+  );
+
+  it("keeps ordinary push and force-push for a triangular fork branch", () => {
+    const policy = derive({
+      branch: "feat/mcp",
+      isCurrent: true,
+      currentBranch: "feat/mcp",
+      branches: [
+        {
+          ...localBranch("feat/mcp", "feat-oid"),
+          isHead: true,
+          upstream: "upstream/develop",
+          upstreamRemote: "upstream",
+          pushRemote: "origin",
+          sync: { status: "ahead", upstream: "upstream/develop", ahead: 1, behind: 0 },
+        },
+        remoteBranch("upstream/develop", "upstream"),
+      ],
+    });
+
+    expect(policy.needsPublishPrompt).toBe(false);
+    expect(policy.canForcePush).toBe(true);
   });
 
   it("rejects integration when the live HEAD moves onto the menu branch", () => {

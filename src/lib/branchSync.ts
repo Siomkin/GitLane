@@ -118,11 +118,11 @@ export const currentBranchSyncView = (
   return {
     label: syncBadgeLabel(sync),
     title: publishNamesake
-      ? `${syncTitle(sync)} ${head.branch} has no remote of the same name yet. Push will publish it.`
+      ? `${head.branch} tracks ${sync.upstream ?? "another branch"} and has no remote of the same name yet. Push will publish it.`
       : syncTitle(sync),
     canPull: canPull(sync),
     canPush: canPush(sync) || publishNamesake,
-    canForcePush: canForcePush(sync),
+    canForcePush: !publishNamesake && canForcePush(sync),
     needsPublishPrompt:
       sync.status === "noUpstream" || sync.status === "staleUpstream" || publishNamesake,
   };
@@ -151,22 +151,46 @@ const canPush = (sync: BranchSyncState) =>
 // menu). `noUpstream` / `staleUpstream` stay on the publish prompt, not this.
 const canForcePush = (sync: BranchSyncState) => sync.status === "diverged";
 
-/** True when the local branch tracks a differently-named remote and no
- * same-named remote-tracking ref exists. `git branch feat origin/develop`
- * used to leave `feat` tracking `develop` (and Push disabled once in sync);
- * Push should publish `origin/feat` instead of no-oping against `develop`.
- * Ahead/behind/diverged against that mismatched upstream keep the normal
- * push-to-upstream path — that remaining tracking is intentional. */
+const LIVE_MISMATCH_SYNC_STATUSES = new Set<BranchSyncState["status"]>([
+  "upToDate",
+  "ahead",
+  "behind",
+  "diverged",
+]);
+
+/** True when the local branch tracks a differently-named remote, has no
+ * explicit push remote overriding that upstream remote, and no same-named
+ * remote-tracking ref exists on that target remote. `git checkout -b feat
+ * origin/develop` leaves `feat` tracking `develop`; Push (and Commit & Push)
+ * should publish `<remote>/feat` across all live sync states (`upToDate`,
+ * `ahead`, `behind`, `diverged`) rather than pushing or force-pushing onto
+ * `develop`. Triangular fork setups (`pushRemote !== upstreamRemote`) already
+ * push to `<pushRemote>/<local>` in the write layer and are left untouched. */
 export const shouldPublishNamesake = (
   branch: BranchInfo | undefined,
   branches: BranchInfo[],
 ): boolean => {
   if (!branch || branch.kind !== BranchKind.Local) return false;
-  if (branch.sync?.status !== "upToDate") return false;
-  const tracked = trackedBranchName(branch, remoteNamesOf(branches));
+  if (!branch.sync || !LIVE_MISMATCH_SYNC_STATUSES.has(branch.sync.status)) return false;
+  const remoteNames = remoteNamesOf(branches);
+  const upstream = branch.sync.upstream ?? branch.upstream;
+  if (!upstream) return false;
+  const upstreamRemote =
+    branch.upstreamRemote ?? remoteNameForUpstream(upstream, remoteNames);
+  if (branch.pushRemote && upstreamRemote && branch.pushRemote !== upstreamRemote) {
+    return false;
+  }
+  const tracked = trackedBranchName(branch, remoteNames);
   if (!tracked || tracked === branch.name) return false;
+  const targetRemote =
+    upstreamRemote && upstreamRemote !== "."
+      ? upstreamRemote
+      : fallbackRemote(remoteNames);
   return !branches.some(
-    (item) => item.kind === BranchKind.Remote && shortName(item) === branch.name,
+    (item) =>
+      item.kind === BranchKind.Remote &&
+      remoteOfBranch(item, remoteNames) === targetRemote &&
+      shortName(item) === branch.name,
   );
 };
 
@@ -190,9 +214,15 @@ const trackedBranchName = (branch: BranchInfo, remoteNames: string[]): string | 
   return remote && upstream.startsWith(`${remote}/`) ? upstream.slice(remote.length + 1) : upstream;
 };
 
+export const remoteOfBranch = (branch: BranchInfo, remoteNames: string[]): string | null =>
+  branch.remote ?? remoteNameForUpstream(branch.name, remoteNames);
+
+const fallbackRemote = (remoteNames: string[]): string =>
+  remoteNames.includes("origin") ? "origin" : remoteNames[0] ?? "origin";
+
 /** Remote names as the backend resolved them (`BranchInfo.remote`), so a
  * remote containing a slash is never split on its first one. */
-const remoteNamesOf = (branches: BranchInfo[]): string[] => [
+export const remoteNamesOf = (branches: BranchInfo[]): string[] => [
   ...new Set(
     branches.flatMap((b) => (b.kind === BranchKind.Remote && b.remote ? [b.remote] : [])),
   ),
@@ -222,9 +252,24 @@ export const defaultPublishTarget = (
     const kept = remoteNameForUpstream(upstream, remoteNamesOf(branches));
     if (kept) return `${kept}/${branchName}`;
   }
-  const remotes = remoteNamesOf(branches);
-  const remote = remotes.includes("origin") ? "origin" : remotes[0] ?? "origin";
+  const remote = fallbackRemote(remoteNamesOf(branches));
   return `${remote}/${branchName}`;
+};
+
+/** The remote half of {@link defaultPublishTarget}, used to pass an explicit
+ * remote to `publish_branch` when the user accepts the pre-filled target so a
+ * longer slashed remote name cannot hijack it. */
+export const defaultPublishRemote = (
+  branches: BranchInfo[],
+  upstream?: string | null,
+  upstreamResolves = true,
+): string => {
+  if (upstream) {
+    const kept = remoteNameForUpstream(upstream, remoteNamesOf(branches));
+    if (kept) return kept;
+    if (upstreamResolves) return fallbackRemote(remoteNamesOf(branches));
+  }
+  return fallbackRemote(remoteNamesOf(branches));
 };
 
 const plural = (count: number) => (count === 1 ? "" : "s");

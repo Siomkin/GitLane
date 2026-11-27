@@ -45,7 +45,7 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
     b,
     tip,
     upstream,
-    isCurrent,
+    canForcePush,
     isLocal,
     repoPath,
     close,
@@ -71,7 +71,7 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
       label: `Rename ${b}…`,
       onClick: () => requestPrompt({ title: `Rename branch ${b}`, placeholder: "new-branch-name", defaultValue: b, confirmLabel: "Rename", validate: validateBranchName, onSubmit: (next) => { if (next !== b) void run(() => renameBranchTo(b, next)); } }),
     });
-    if (isCurrent) {
+    if (canForcePush) {
       danger.push({
         label: "Force push (with lease)…",
         onClick: () =>

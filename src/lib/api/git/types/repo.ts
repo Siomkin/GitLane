@@ -170,6 +170,10 @@ export interface RepoForge {
    * `ForgeCapabilities`), or null when there is no remote or the host is not a
    * pull-request forge. Optional for fixtures; the backend always sends it. */
   capabilities?: ForgeCapabilities | null;
+  /** Configured git remote whose effective push URL matches the repository
+   * resolved by the active PR provider, or null when no configured remote
+   * pushes to that repository. Optional for fixtures; the backend always sends it. */
+  prRemote?: string | null;
 }
 
 /** What GitLane can do with pull requests on one forge — declared once by the

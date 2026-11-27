@@ -283,13 +283,59 @@ describe("mismatched upstream without a same-named remote", () => {
     });
   });
 
-  it("still pushes to the mismatched upstream when ahead of it", () => {
+  it.each([
+    { status: "ahead" as const, ahead: 1, behind: 0 },
+    { status: "behind" as const, ahead: 0, behind: 2 },
+    { status: "diverged" as const, ahead: 2, behind: 1 },
+  ])(
+    "routes $status against a mismatched upstream to Publish and hides Force push",
+    ({ status, ahead, behind }) => {
+      const local = feature({
+        sync: { status, upstream: "origin/develop", ahead, behind },
+      });
+      const branches = [local, remote("origin/develop")];
+      expect(currentBranchSyncView(featureSummary, branches)).toMatchObject({
+        canPush: true,
+        canForcePush: false,
+        needsPublishPrompt: true,
+      });
+      expect(publishUsesConfiguredUpstream(local, branches)).toBe(false);
+      expect(defaultPublishTarget(branches, local.name, local.upstream, false)).toBe(
+        "origin/infra/deploy-bootstrap-seed",
+      );
+    },
+  );
+
+  it("preserves explicit triangular pushRemote in fork workflows without prompting", () => {
+    const local = feature({
+      upstream: "upstream/develop",
+      upstreamRemote: "upstream",
+      pushRemote: "origin",
+      sync: { status: "ahead", upstream: "upstream/develop", ahead: 1, behind: 0 },
+    });
+    const branches = [local, remote("upstream/develop"), remote("origin/main")];
+    expect(shouldPublishNamesake(local, branches)).toBe(false);
+    expect(currentBranchSyncView(featureSummary, branches)).toMatchObject({
+      canPush: true,
+      canForcePush: false,
+      needsPublishPrompt: false,
+    });
+  });
+
+  it("does not let a namesake on an unrelated remote bypass the mismatched-upstream guard", () => {
     const local = feature({
       sync: { status: "ahead", upstream: "origin/develop", ahead: 1, behind: 0 },
     });
-    expect(currentBranchSyncView(featureSummary, [local, remote("origin/develop")])).toMatchObject({
+    const branches = [
+      local,
+      remote("origin/develop"),
+      remote("backup/infra/deploy-bootstrap-seed"),
+    ];
+    expect(shouldPublishNamesake(local, branches)).toBe(true);
+    expect(currentBranchSyncView(featureSummary, branches)).toMatchObject({
       canPush: true,
-      needsPublishPrompt: false,
+      canForcePush: false,
+      needsPublishPrompt: true,
     });
   });
 });

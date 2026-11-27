@@ -149,7 +149,15 @@ export function useCommitExecutionController() {
           // The prompt can outlive the checkout that opened it. Recheck all
           // ownership here, before selecting the write action from the store.
           const state = sameCheckout();
-          if (state) void finish(() => state.publishBranch(branch, upstream));
+          if (state) {
+            void finish(() =>
+              state.publishBranch(
+                branch,
+                upstream,
+                upstream === prompt.defaultValue ? prompt.defaultRemote : undefined,
+              ),
+            );
+          }
         },
       });
       return;

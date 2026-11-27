@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   currentBranchSyncView,
+  defaultPublishRemote,
   defaultPublishTarget,
   publishUsesConfiguredUpstream,
 } from "@/lib/branchSync";
@@ -239,22 +240,22 @@ export function useActionBarModel(): ActionBarModel {
     const branch = summary?.headBranch;
     if (branch && currentSync.needsPublishPrompt) {
       const info = branches.find((b) => b.kind === BranchKind.Local && b.name === branch);
+      const upstreamResolves = publishUsesConfiguredUpstream(info, branches);
+      const defaultValue = defaultPublishTarget(branches, branch, info?.upstream, upstreamResolves);
+      const defaultRemote = defaultPublishRemote(branches, info?.upstream, upstreamResolves);
       requestPrompt({
         title: `Publish ${branch}`,
         message: `Remote branch for ${branch} to push to and pull from.`,
         placeholder: "origin/branch",
-        defaultValue: defaultPublishTarget(
-          branches,
-          branch,
-          info?.upstream,
-          publishUsesConfiguredUpstream(info, branches),
-        ),
+        defaultValue,
         confirmLabel: "Publish",
         // `publishBranch` rejects for its caller to toast (runOp contract);
         // `push` toasts its own failures.
         onSubmit: (upstream) =>
           void run("push", () =>
-            publishBranch(branch, upstream).catch((error: unknown) => useUi.getState().showToast(error, "error")),
+            publishBranch(branch, upstream, upstream === defaultValue ? defaultRemote : undefined).catch(
+              (error: unknown) => useUi.getState().showToast(error, "error"),
+            ),
           )(),
       });
       return;

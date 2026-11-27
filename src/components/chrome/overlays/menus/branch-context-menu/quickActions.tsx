@@ -1,4 +1,8 @@
-import { defaultPublishTarget, publishUsesConfiguredUpstream } from "@/lib/branchSync";
+import {
+  defaultPublishRemote,
+  defaultPublishTarget,
+  publishUsesConfiguredUpstream,
+} from "@/lib/branchSync";
 import { ShortcutId } from "@/lib/shortcuts";
 import {
   CheckIcon,
@@ -40,20 +44,20 @@ export function quickActionItems(ctx: BranchMenuContext): MenuItem[] {
     openCreatePr,
   } = ctx;
 
-  const promptPublishBranch = () =>
+  const promptPublishBranch = () => {
+    const upstreamResolves = publishUsesConfiguredUpstream(info, branches);
+    const defaultValue = defaultPublishTarget(branches, b, upstream, upstreamResolves);
+    const defaultRemote = defaultPublishRemote(branches, upstream, upstreamResolves);
     requestPrompt({
       title: `Publish ${b}`,
       message: `Remote branch for ${b} to push to and pull from.`,
       placeholder: "origin/branch",
-      defaultValue: defaultPublishTarget(
-        branches,
-        b,
-        upstream,
-        publishUsesConfiguredUpstream(info, branches),
-      ),
+      defaultValue,
       confirmLabel: "Publish",
-      onSubmit: (up) => void run(() => publishBranch(b, up)),
+      onSubmit: (up) =>
+        void run(() => publishBranch(b, up, up === defaultValue ? defaultRemote : undefined)),
     });
+  };
   const pushLocalBranch = () => {
     if (needsPublishPrompt) {
       promptPublishBranch();

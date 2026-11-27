@@ -29,6 +29,10 @@ export interface BranchContextMenuPolicy {
   currentOid: string | null;
   upstream: string | null;
   needsPublishPrompt: boolean;
+  /** Whether the Danger-zone leased force-push action is offered for this branch.
+   * Suppressed when the branch is covered by the mismatched-upstream namesake
+   * publish rule so the menu cannot force-push onto a differently-named base. */
+  canForcePush: boolean;
   canIntegrateIntoCurrent: boolean;
   isLocal: boolean;
   isRemote: boolean;
@@ -166,6 +170,8 @@ export function deriveBranchContextMenuPolicy({
     knownForge && forgeBranchName && !upstreamStale ? branchWebUrl(forge, forgeBranchName) : null;
   const forgeName = branchUrl ? forge?.forge ?? null : null;
 
+  const publishNamesake = shouldPublishNamesake(info, branches);
+
   return {
     info,
     tip,
@@ -180,7 +186,8 @@ export function deriveBranchContextMenuPolicy({
     needsPublishPrompt:
       sync?.status === "noUpstream" ||
       sync?.status === "staleUpstream" ||
-      shouldPublishNamesake(info, branches),
+      publishNamesake,
+    canForcePush: isLocal && isCurrent && !publishNamesake,
     // `isCurrent` belongs to the menu-opening snapshot. The live branch can move
     // while that same menu object stays open, so also guard against self-actions.
     canIntegrateIntoCurrent: !isCurrent && currentBranch != null && branch !== currentBranch,

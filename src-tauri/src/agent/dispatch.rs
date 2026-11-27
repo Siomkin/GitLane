@@ -148,7 +148,7 @@ remote_commands! {
     remotes::pull(path, branch, expected_oid, auth),
     remotes::fetch(path, remote_accounts),
     remotes::push_branch(path, branch, expected_oid, auth),
-    remotes::publish_branch(path, branch, expected_oid, upstream, auth),
+    remotes::publish_branch(path, branch, expected_oid, upstream, remote, auth),
     remotes::list_remotes(path),
     remotes::repo_forge(path),
     remotes::add_remote(path, name, url),

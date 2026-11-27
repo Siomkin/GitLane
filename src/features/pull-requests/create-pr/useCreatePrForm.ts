@@ -4,7 +4,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BranchKind, type BranchInfo, type PrReviewerCandidate } from "@/lib/api";
-import { defaultPublishTarget } from "@/lib/branchSync";
 import { useAccounts } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
 import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
@@ -15,6 +14,7 @@ import { branchNameOf, guessBase, readableRef } from "./branchRefs";
 import { bodyFromCommits, type PrTemplateRef } from "./prTemplates";
 import {
   mergeOrderNote,
+  resolvePrPublishPlan,
   stackCandidates,
   stackChain,
   stackMapRows,
@@ -39,6 +39,7 @@ export function useCreatePrForm() {
   const requestedHead = useUi((s) => s.createPrHead);
   const summary = useRepo((s) => s.summary);
   const branches = useRepo((s) => s.branches);
+  const remotes = useRepo((s) => s.remotes);
   const forge = useRepo((s) => s.forge);
   const prs = usePulls((s) => s.pullRequests);
   const createPr = usePulls((s) => s.createPr);
@@ -167,14 +168,27 @@ export function useCreatePrForm() {
     setTab(DESCRIPTION_TAB.Write);
   };
 
-  // A branch with no upstream has no head ref on the forge yet. Rather than
-  // refusing, publish it as part of opening the pull request — which is what
-  // `gh pr create` does when it runs interactively.
+  // A branch with no upstream (or tracking a differently-named base with no
+  // namesake remote yet) has no head ref on the forge yet. Auto-publish it only
+  // when its destination matches the PR's resolved target repository; otherwise
+  // block submission and explain that cross-repository PRs are unsupported.
   const headInfo = branches.find((b) => b.kind === BranchKind.Local && b.name === head);
-  const needsPublish = !!head && !!headInfo && !headInfo.upstream;
-  const publishTarget = needsPublish ? defaultPublishTarget(branches, head) : null;
+  const { publishTarget, publishRemote, crossRepoError, awaitingForge } = resolvePrPublishPlan({
+    head,
+    headInfo,
+    branches,
+    remotes,
+    forgeResolved: forge !== null,
+    prRemote: forge?.prRemote,
+  });
 
-  const canSubmit = !!title.trim() && !!targetBranch && !!head && targetBranch !== head;
+  const canSubmit =
+    !!title.trim() &&
+    !!targetBranch &&
+    !!head &&
+    targetBranch !== head &&
+    crossRepoError === null &&
+    !awaitingForge;
   const closeCurrent = () => close(dialogGeneration);
 
   const submit = async () => {
@@ -200,7 +214,7 @@ export function useCreatePrForm() {
     try {
       const ok = await run(async () => {
         if (publishTarget) {
-          await publishBranch(head, publishTarget);
+          await publishBranch(head, publishTarget, publishRemote);
           // Publishing can take a while, and the dialog stays interactive
           // behind it. If it was closed, reopened, or pointed at another repo
           // in the meantime, the pull request must not be created at all —
@@ -297,6 +311,8 @@ export function useCreatePrForm() {
     },
     canSubmit,
     publishTarget,
+    crossRepoError,
+    awaitingForge,
     submitting,
     pending,
     creating,

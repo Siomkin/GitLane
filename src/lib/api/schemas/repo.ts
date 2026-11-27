@@ -65,6 +65,7 @@ export const repoForgeSchema = z.object({
   host: z.string().nullable(),
   webUrl: z.string().nullable(),
   capabilities: forgeCapabilitiesSchema.nullish(),
+  prRemote: z.string().nullish(),
 });
 
 export const remoteInfoSchema = z.object({

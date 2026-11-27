@@ -96,6 +96,11 @@ pub struct RepoForge {
     /// its provider adapter. None when no remote is configured or the host is
     /// not a recognised pull-request forge.
     pub capabilities: Option<ForgeCapabilities>,
+    /// Configured git remote whose effective push URL matches the repository
+    /// resolved by the active PR provider, or `None` when no configured remote
+    /// pushes to that repository (for example, a fork with `gh repo set-default`
+    /// pointing at the parent).
+    pub pr_remote: Option<String>,
 }
 
 /// The pull-request features one forge's adapter implements. The single

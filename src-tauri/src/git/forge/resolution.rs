@@ -1,10 +1,12 @@
 //! libgit2-backed configured-remote enumeration and provider resolution.
 
 mod gh_resolved;
+mod pr_remote;
 
 use git2::Repository;
 
 use gh_resolved::gh_resolved_project;
+use pr_remote::pr_remote_for;
 
 use super::parsing::{
     api_host_for, classify_host, credential_host_for_url, remote_host, remote_path,
@@ -61,6 +63,7 @@ pub fn summary(path: &str) -> RepoForge {
                     host: Some(host),
                     web_url: web,
                     capabilities,
+                    pr_remote: pr_remote_for(&repo, kind),
                 };
             }
         }
@@ -72,6 +75,7 @@ pub fn summary(path: &str) -> RepoForge {
         host: first_host,
         web_url: first_web,
         capabilities: None,
+        pr_remote: None,
     }
 }
 
@@ -231,17 +235,21 @@ pub fn detect(path: &str) -> Option<RemoteForge> {
 /// bare transport hostname because an SSH port is not an HTTPS API port.
 pub fn github_project(path: &str) -> Option<(String, String)> {
     let repo = Repository::discover(path).ok()?;
+    github_project_in(&repo)
+}
+
+pub(super) fn github_project_in(repo: &Repository) -> Option<(String, String)> {
     // `gh repo set-default` is the user's explicit answer to "which repository
     // do this checkout's pull requests belong to". It matters most in a fork
     // clone, where `origin` is the fork but PRs live on the parent: picking the
     // first GitHub remote would silently retarget every PR read *and write* to
     // the fork. gh records the choice in git config, so honour it without
     // spawning gh.
-    if let Some(resolved) = gh_resolved_project(&repo) {
+    if let Some(resolved) = gh_resolved_project(repo) {
         return Some(resolved);
     }
     let mut unknown = None;
-    for url in remote_urls(&repo) {
+    for url in remote_urls(repo) {
         let url = url.as_str();
         let Some(host) = remote_host(url) else {
             continue;
@@ -303,7 +311,11 @@ pub(crate) fn remote_api_authority_for_project(
 /// names the remote that drives the operation.
 pub fn project_for(path: &str, kind: ForgeKind) -> Option<(String, String)> {
     let repo = Repository::discover(path).ok()?;
-    for url in remote_urls(&repo) {
+    project_for_in(&repo, kind)
+}
+
+pub(super) fn project_for_in(repo: &Repository, kind: ForgeKind) -> Option<(String, String)> {
+    for url in remote_urls(repo) {
         let url = url.as_str();
         // Classify on the bare host; return the API host (with HTTPS port).
         let Some(bare_host) = remote_host(url) else {
@@ -330,7 +342,11 @@ pub fn project_for(path: &str, kind: ForgeKind) -> Option<(String, String)> {
 /// default-push-remote-first ordering as [`detect`].
 pub fn bitbucket_repo(path: &str) -> Option<(String, String, String)> {
     let repo = Repository::discover(path).ok()?;
-    for url in remote_urls(&repo) {
+    bitbucket_repo_in(&repo)
+}
+
+pub(super) fn bitbucket_repo_in(repo: &Repository) -> Option<(String, String, String)> {
+    for url in remote_urls(repo) {
         let url = url.as_str();
         let Some(host) = remote_host(url) else {
             continue;
@@ -591,5 +607,109 @@ mod tests {
             github_project(repo.0.to_str().unwrap()),
             Some(("github.com".into(), "me/app".into())),
         );
+    }
+
+    #[test]
+    fn summary_pr_remote_matches_single_and_gh_resolved_remotes() {
+        let single = TempRepo::init("pr-remote-single", "https://github.com/me/app.git");
+        assert_eq!(
+            summary(single.0.to_str().unwrap()).pr_remote.as_deref(),
+            Some("origin"),
+        );
+
+        let multi = TempRepo::init("pr-remote-gh-base", "https://github.com/fork/app.git");
+        set_default_remote(
+            &multi.0,
+            "upstream",
+            "https://github.com/parent/app.git",
+            "base",
+        );
+        assert_eq!(
+            summary(multi.0.to_str().unwrap()).pr_remote.as_deref(),
+            Some("upstream"),
+        );
+    }
+
+    #[test]
+    fn summary_pr_remote_is_none_when_no_configured_remote_pushes_to_resolved_repo() {
+        let fork = TempRepo::init("pr-remote-none", "https://github.com/fork/app.git");
+        {
+            let opened = Repository::open(&fork.0).unwrap();
+            opened
+                .config()
+                .unwrap()
+                .set_str("remote.origin.gh-resolved", "parent/app")
+                .unwrap();
+        }
+        assert_eq!(summary(fork.0.to_str().unwrap()).pr_remote, None);
+    }
+
+    #[test]
+    fn summary_pr_remote_checks_effective_push_url() {
+        let repo = TempRepo::init("pr-remote-pushurl", "https://github.com/parent/app.git");
+        {
+            let opened = Repository::open(&repo.0).unwrap();
+            opened
+                .remote_set_pushurl("origin", Some("https://github.com/fork/app.git"))
+                .unwrap();
+        }
+        assert_eq!(summary(repo.0.to_str().unwrap()).pr_remote, None);
+    }
+
+    #[test]
+    fn summary_pr_remote_rejects_remote_with_extra_push_url_to_another_repo() {
+        let repo = TempRepo::init("pr-remote-multi-pushurl", "https://github.com/me/app.git");
+        {
+            let opened = Repository::open(&repo.0).unwrap();
+            let mut cfg = opened.config().unwrap();
+            cfg.set_multivar(
+                "remote.origin.pushurl",
+                "^$",
+                "https://github.com/me/app.git",
+            )
+            .unwrap();
+            cfg.set_multivar(
+                "remote.origin.pushurl",
+                "^$",
+                "https://github.com/mirror/app.git",
+            )
+            .unwrap();
+        }
+        assert_eq!(summary(repo.0.to_str().unwrap()).pr_remote, None);
+    }
+
+    #[test]
+    fn summary_pr_remote_matches_ssh_fetch_with_https_custom_port_push_url() {
+        let repo = TempRepo::init("pr-remote-ssh-https-port", "git@gitlab.com:group/app.git");
+        {
+            let opened = Repository::open(&repo.0).unwrap();
+            opened
+                .remote_set_pushurl("origin", Some("https://gitlab.com:8443/group/app.git"))
+                .unwrap();
+        }
+        assert_eq!(
+            summary(repo.0.to_str().unwrap()).pr_remote.as_deref(),
+            Some("origin"),
+        );
+    }
+
+    #[test]
+    fn summary_pr_remote_rejects_remote_redirected_by_push_instead_of() {
+        let repo = TempRepo::init(
+            "pr-remote-push-instead-of",
+            "https://github.com/team/app.git",
+        );
+        {
+            let opened = Repository::open(&repo.0).unwrap();
+            opened
+                .config()
+                .unwrap()
+                .set_str(
+                    "url.https://github.com/fork/.pushInsteadOf",
+                    "https://github.com/team/",
+                )
+                .unwrap();
+        }
+        assert_eq!(summary(repo.0.to_str().unwrap()).pr_remote, None);
     }
 }

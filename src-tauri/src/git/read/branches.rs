@@ -90,7 +90,7 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
                 None
             };
             let push_remote = if kind == BranchKind::Local {
-                Some(configured_push_remote(&repo, &name))
+                configured_push_remote(&repo, &name)
             } else {
                 None
             };
@@ -129,21 +129,22 @@ fn configured_remote(repo: &Repository, branch_name: &str) -> Option<String> {
     Some(crate::redact::redact_url_credentials(&remote))
 }
 
-/// Mirror real Git's push-remote precedence so the frontend selects credentials
-/// for the same destination the write side resolves in triangular workflows.
-fn configured_push_remote(repo: &Repository, branch_name: &str) -> String {
-    let config = repo.config().ok();
+/// Mirror real Git's configured push-remote precedence (`branch.<name>.pushRemote`
+/// → `remote.pushDefault` → `branch.<name>.remote`), returning `None` when none
+/// is configured so callers can distinguish an explicit push remote from the
+/// `"origin"` fallback.
+fn configured_push_remote(repo: &Repository, branch_name: &str) -> Option<String> {
+    let config = repo.config().ok()?;
     let value = |key: &str| {
         config
-            .as_ref()
-            .and_then(|cfg| cfg.get_string(key).ok())
+            .get_string(key)
+            .ok()
             .filter(|remote| !remote.is_empty())
             .map(|remote| crate::redact::redact_url_credentials(&remote))
     };
     value(&format!("branch.{branch_name}.pushRemote"))
         .or_else(|| value("remote.pushDefault"))
         .or_else(|| value(&format!("branch.{branch_name}.remote")))
-        .unwrap_or_else(|| "origin".to_string())
 }
 
 fn configured_upstream(repo: &Repository, branch_name: &str) -> Option<String> {

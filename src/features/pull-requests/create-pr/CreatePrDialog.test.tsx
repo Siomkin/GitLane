@@ -445,6 +445,23 @@ describe("CreatePrDialog base branch", () => {
 describe("CreatePrDialog on an unpublished branch", () => {
   const unpublished = () => {
     useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: "https://github.com/o/r",
+        capabilities: capabilitiesFor(ForgeKind.GitHub),
+        prRemote: "origin",
+      },
+      remotes: [
+        {
+          name: "origin",
+          fetchUrl: "https://github.com/o/r.git",
+          pushUrl: "https://github.com/o/r.git",
+          isDefault: true,
+        },
+      ],
       branches: [
         { kind: "local", name: "feat/x", upstream: null },
         { kind: "local", name: "latest", upstream: "origin/latest" },
@@ -465,7 +482,7 @@ describe("CreatePrDialog on an unpublished branch", () => {
     await userEvent.type(screen.getByPlaceholderText("Title"), "First push");
     await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
 
-    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x"));
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x", "origin"));
     await waitFor(() => expect(createPr).toHaveBeenCalled());
   });
 
@@ -778,5 +795,258 @@ describe("CreatePrDialog stack targeting", () => {
     render(<CreatePrDialog />);
     await screen.findByLabelText("Base branch");
     expect(screen.queryByRole("button", { name: /^Stack on/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("CreatePrDialog publish target & cross-repository guard", () => {
+  const realPublishBranch = useRepo.getState().publishBranch;
+
+  const githubForge = (prRemote: string | null) => ({
+    hasRemote: true,
+    kind: ForgeKind.GitHub,
+    forge: "GitHub",
+    host: "github.com",
+    webUrl: "https://github.com/o/r",
+    capabilities: capabilitiesFor(ForgeKind.GitHub),
+    prRemote,
+  });
+
+  it("publishes a mismatched-upstream branch under its own name when its remote matches prRemote", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    const { createPr, resolve } = deferredCreate();
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge("origin"),
+      branches: [
+        {
+          kind: "local",
+          name: "feat/x",
+          target: "aaa",
+          isHead: true,
+          upstream: "origin/develop",
+          upstreamRemote: "origin",
+          pushRemote: "origin",
+          remote: null,
+          sync: { status: "ahead", upstream: "origin/develop", ahead: 1, behind: 0 },
+        },
+        { kind: "remote", name: "origin/develop", target: "bbb", isHead: false, upstream: null, remote: "origin" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      expect(screen.getByText(/will publish to/i)).toBeInTheDocument();
+      expect(screen.getByText("origin/feat/x")).toBeInTheDocument();
+
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Feature PR");
+      await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+
+      await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x", "origin"));
+      await waitFor(() =>
+        expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x" }), []),
+      );
+      resolve("https://github.com/o/r/pull/101");
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("blocks creation without publishing when the branch targets a different remote than prRemote", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    const { createPr } = deferredCreate();
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge("upstream"),
+      branches: [
+        {
+          kind: "local",
+          name: "feat/x",
+          target: "aaa",
+          isHead: true,
+          upstream: "origin/develop",
+          upstreamRemote: "origin",
+          pushRemote: "origin",
+          remote: null,
+          sync: { status: "ahead", upstream: "origin/develop", ahead: 1, behind: 0 },
+        },
+        { kind: "remote", name: "origin/develop", target: "bbb", isHead: false, upstream: null, remote: "origin" },
+        { kind: "remote", name: "upstream/develop", target: "bbb", isHead: false, upstream: null, remote: "upstream" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Fork PR");
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/cross-repository pull requests are not supported/i);
+      expect(screen.getByRole("button", { name: "Create pull request" })).toBeDisabled();
+      expect(publishBranch).not.toHaveBeenCalled();
+      expect(createPr).not.toHaveBeenCalled();
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("blocks creation when no configured remote pushes to the resolved PR repository", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge(null),
+      branches: [
+        {
+          kind: "local",
+          name: "feat/x",
+          target: "aaa",
+          isHead: true,
+          upstream: null,
+          remote: null,
+          sync: { status: "noUpstream", upstream: null, ahead: 0, behind: 0 },
+        },
+        { kind: "remote", name: "origin/develop", target: "bbb", isHead: false, upstream: null, remote: "origin" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Fork PR");
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/no configured remote pushes to the resolved pull request repository/i);
+      expect(screen.getByRole("button", { name: "Create pull request" })).toBeDisabled();
+      expect(publishBranch).not.toHaveBeenCalled();
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("blocks a triangular fork branch pushing to origin when prRemote is upstream", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge("upstream"),
+      remotes: [
+        { name: "origin", fetchUrl: "https://github.com/fork/r.git", pushUrl: "https://github.com/fork/r.git", isDefault: false },
+        { name: "upstream", fetchUrl: "https://github.com/o/r.git", pushUrl: "https://github.com/o/r.git", isDefault: true },
+      ],
+      branches: [
+        {
+          kind: "local",
+          name: "feat/x",
+          target: "aaa",
+          isHead: true,
+          upstream: "upstream/develop",
+          upstreamRemote: "upstream",
+          pushRemote: "origin",
+          remote: null,
+          sync: { status: "ahead", upstream: "upstream/develop", ahead: 1, behind: 0 },
+        },
+        { kind: "remote", name: "upstream/develop", target: "bbb", isHead: false, upstream: null, remote: "upstream" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Triangular Fork PR");
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/cross-repository pull requests are not supported/i);
+      expect(screen.getByRole("button", { name: "Create pull request" })).toBeDisabled();
+      expect(publishBranch).not.toHaveBeenCalled();
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("waits for pending forge detection before allowing auto-publish on an unpublished branch", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      publishBranch,
+      forge: null,
+      remotes: [
+        { name: "origin", fetchUrl: "https://github.com/o/r.git", pushUrl: "https://github.com/o/r.git", isDefault: true },
+      ],
+      branches: [
+        { kind: "local", name: "feat/x", target: "aaa", isHead: true, upstream: null, pushRemote: null, remote: null },
+        { kind: "remote", name: "origin/develop", target: "bbb", isHead: false, upstream: null, remote: "origin" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Delayed forge PR");
+
+      expect(screen.getByText(/checking pull request repository/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Create pull request" })).toBeDisabled();
+      expect(publishBranch).not.toHaveBeenCalled();
+
+      act(() => {
+        useRepo.setState({ forge: githubForge("origin") });
+      });
+
+      expect(screen.queryByText(/checking pull request repository/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Push and create pull request" })).toBeEnabled();
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("passes the explicit PR remote to publishBranch even when remotes have not loaded yet", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    const { createPr, resolve } = deferredCreate();
+    useRepo.setState({
+      summary: {
+        path: "/repo-a",
+        workdir: "/repo-a",
+        headBranch: "feat/topic",
+        headOid: "aaa",
+        detached: false,
+        unborn: false,
+        isWorktree: false,
+      },
+      publishBranch,
+      forge: githubForge("origin"),
+      // Remotes have not loaded yet (or an unfetched `origin/feat` remote exists
+      // on disk); passing explicit `"origin"` keeps the backend unambiguous.
+      remotes: [],
+      branches: [
+        { kind: "local", name: "feat/topic", target: "aaa", isHead: true, upstream: null, pushRemote: null, remote: null },
+        { kind: "remote", name: "origin/develop", target: "bbb", isHead: false, upstream: null, remote: "origin" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Slashed branch PR");
+      await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+
+      await waitFor(() =>
+        expect(publishBranch).toHaveBeenCalledWith("feat/topic", "origin/feat/topic", "origin"),
+      );
+      await waitFor(() => expect(createPr).toHaveBeenCalled());
+      resolve("https://github.com/o/r/pull/103");
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("publishes an untracked branch to a custom-named single remote (even with legacy origin fallback)", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    const { createPr, resolve } = deferredCreate();
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge("team"),
+      remotes: [
+        { name: "team", fetchUrl: "https://github.com/o/r.git", pushUrl: "https://github.com/o/r.git", isDefault: true },
+      ],
+      branches: [
+        { kind: "local", name: "feat/x", target: "aaa", isHead: true, upstream: null, pushRemote: "origin", remote: null },
+        { kind: "remote", name: "team/develop", target: "bbb", isHead: false, upstream: null, remote: "team" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      expect(screen.getByText("team/feat/x")).toBeInTheDocument();
+
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Custom remote PR");
+      await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+
+      await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "team/feat/x", "team"));
+      await waitFor(() => expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x" }), []));
+      resolve("https://github.com/o/r/pull/102");
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
   });
 });

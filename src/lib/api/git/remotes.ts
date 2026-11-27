@@ -167,17 +167,26 @@ export const remotesApi = {
     ),
 
   /** First-push flow: create/update `upstream` (`remote/branch`) and set it as
-   * `branch`'s upstream in the same git push. */
+   * `branch`'s upstream in the same git push. Pass `remote` when the intended
+   * remote is already known so a longer slashed remote name cannot hijack it. */
   publishBranch: async (
     path: string,
     branch: string,
     expectedOid: string,
     upstream: string,
     auth?: GitTransportAuthRef | null,
+    remote?: string | null,
   ) =>
     parse(
       z.string(),
-      await invoke("publish_branch", { path, branch, expectedOid, upstream, auth: auth ?? null }),
+      await invoke("publish_branch", {
+        path,
+        branch,
+        expectedOid,
+        upstream,
+        remote: remote ?? null,
+        auth: auth ?? null,
+      }),
       "publish_branch",
     ),
 };
