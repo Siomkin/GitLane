@@ -47,7 +47,7 @@ export function quickActionItems(ctx: BranchMenuContext): MenuItem[] {
   const promptPublishBranch = () => {
     const upstreamResolves = publishUsesConfiguredUpstream(info, branches);
     const defaultValue = defaultPublishTarget(branches, b, upstream, upstreamResolves);
-    const defaultRemote = defaultPublishRemote(branches, upstream, upstreamResolves);
+    const defaultRemote = defaultPublishRemote(branches, upstream);
     requestPrompt({
       title: `Publish ${b}`,
       message: `Remote branch for ${b} to push to and pull from.`,

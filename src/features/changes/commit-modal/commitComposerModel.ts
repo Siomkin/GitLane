@@ -209,7 +209,7 @@ export function publishPromptDetails(
     message: `Remote branch for ${branch} to push to and pull from.`,
     placeholder: "origin/branch",
     defaultValue: defaultPublishTarget(branches, branch, info?.upstream, upstreamResolves),
-    defaultRemote: defaultPublishRemote(branches, info?.upstream, upstreamResolves),
+    defaultRemote: defaultPublishRemote(branches, info?.upstream),
     confirmLabel: "Publish",
   };
 }

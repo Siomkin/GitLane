@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BranchInfo, BranchSyncState, RepoSummary } from "./api";
 import {
   currentBranchSyncView,
+  defaultPublishRemote,
   defaultPublishTarget,
   publishUsesConfiguredUpstream,
   shouldPublishNamesake,
@@ -201,6 +202,9 @@ describe("defaultPublishTarget", () => {
     expect(defaultPublishTarget([remote("origin/x")], "feature", "trunk", false)).toBe(
       "origin/feature",
     );
+    expect(defaultPublishRemote([remote("origin/x"), remote("fork/y")], "fork/old")).toBe("fork");
+    expect(defaultPublishRemote([remote("origin/x")], "trunk")).toBe("origin");
+    expect(defaultPublishRemote([remote("fork/y")])).toBe("fork");
   });
 });
 

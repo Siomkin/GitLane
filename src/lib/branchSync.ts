@@ -262,14 +262,13 @@ export const defaultPublishTarget = (
 export const defaultPublishRemote = (
   branches: BranchInfo[],
   upstream?: string | null,
-  upstreamResolves = true,
 ): string => {
+  const remoteNames = remoteNamesOf(branches);
   if (upstream) {
-    const kept = remoteNameForUpstream(upstream, remoteNamesOf(branches));
+    const kept = remoteNameForUpstream(upstream, remoteNames);
     if (kept) return kept;
-    if (upstreamResolves) return fallbackRemote(remoteNamesOf(branches));
   }
-  return fallbackRemote(remoteNamesOf(branches));
+  return fallbackRemote(remoteNames);
 };
 
 const plural = (count: number) => (count === 1 ? "" : "s");

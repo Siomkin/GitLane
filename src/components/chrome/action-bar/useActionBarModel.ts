@@ -242,7 +242,7 @@ export function useActionBarModel(): ActionBarModel {
       const info = branches.find((b) => b.kind === BranchKind.Local && b.name === branch);
       const upstreamResolves = publishUsesConfiguredUpstream(info, branches);
       const defaultValue = defaultPublishTarget(branches, branch, info?.upstream, upstreamResolves);
-      const defaultRemote = defaultPublishRemote(branches, info?.upstream, upstreamResolves);
+      const defaultRemote = defaultPublishRemote(branches, info?.upstream);
       requestPrompt({
         title: `Publish ${branch}`,
         message: `Remote branch for ${branch} to push to and pull from.`,
