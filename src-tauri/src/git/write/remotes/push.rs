@@ -33,15 +33,21 @@ pub fn push_branch(
 /// Publish `branch` to `upstream` (`remote/branch`) and set it as the branch's
 /// upstream in one git invocation. Used for first-push flows where the remote
 /// tracking ref does not exist yet, so `set_upstream` alone would fail.
+///
+/// When `explicit_remote` is supplied, `upstream` is split at that exact remote
+/// prefix (`<remote>/<branch>`) rather than guessing via longest-prefix match —
+/// preventing an unfetched slashed remote like `origin/feat` from hijacking
+/// `origin/feat/topic`.
 pub fn publish_branch(
     repo: &str,
     branch: &str,
     expected_oid: &str,
     upstream: &str,
+    explicit_remote: Option<&str>,
     cred: &TransportCredential,
 ) -> Result<String, String> {
     super::super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
-    let (remote, remote_branch) = split_remote_ref(repo, upstream)?;
+    let (remote, remote_branch) = split_publish_target(repo, upstream, explicit_remote)?;
     ensure_operand(&remote)?;
     ensure_operand(&remote_branch)?;
     let refspec = format!("{expected_oid}:refs/heads/{remote_branch}");
@@ -115,11 +121,36 @@ pub(in crate::git::write) fn split_configured_remote(
         .map(|remote| (remote.to_string(), spec[remote.len() + 1..].to_string())))
 }
 
-/// The remote half of an `upstream` (`remote/branch`) publish target — the same
-/// longest-prefix resolution [`publish_branch`] uses, exposed so per-remote auth
-/// can validate the account against the remote actually pushed to (GL-129).
-pub fn publish_remote(repo: &str, upstream: &str) -> Result<String, String> {
-    split_remote_ref(repo, upstream).map(|(remote, _)| remote)
+fn split_publish_target(
+    repo: &str,
+    upstream: &str,
+    explicit_remote: Option<&str>,
+) -> Result<(String, String), String> {
+    if let Some(remote) = explicit_remote {
+        let invalid = || "Enter an upstream as remote/branch, for example origin/main.".to_string();
+        let remote_branch = upstream
+            .strip_prefix(remote)
+            .and_then(|rest| rest.strip_prefix('/'))
+            .filter(|branch| !branch.is_empty())
+            .ok_or_else(invalid)?;
+        if remote.is_empty() {
+            return Err(invalid());
+        }
+        return Ok((remote.to_string(), remote_branch.to_string()));
+    }
+    split_remote_ref(repo, upstream)
+}
+
+/// The remote half of an `upstream` (`remote/branch`) publish target — honouring
+/// an explicit remote when supplied, else the longest-prefix resolution
+/// [`publish_branch`] uses, exposed so per-remote auth can validate the account
+/// against the remote actually pushed to (GL-129).
+pub fn publish_remote(
+    repo: &str,
+    upstream: &str,
+    explicit_remote: Option<&str>,
+) -> Result<String, String> {
+    split_publish_target(repo, upstream, explicit_remote).map(|(remote, _)| remote)
 }
 
 /// The remote a push of `branch` targets (the remote half of

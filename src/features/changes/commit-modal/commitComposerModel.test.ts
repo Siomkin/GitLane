@@ -236,6 +236,64 @@ describe("commitComposerModel", () => {
       defaultValue: "origin/main",
       confirmLabel: "Publish",
     });
+
+    const featureSummary = { ...summary, headBranch: "feat/mcp" };
+    const mismatchedBranches = [
+      localBranch({
+        name: "feat/mcp",
+        upstream: "origin/develop",
+        upstreamRemote: "origin",
+        pushRemote: "origin",
+        sync: { status: "ahead", upstream: "origin/develop", ahead: 1, behind: 0 },
+      }),
+      {
+        name: "origin/develop",
+        kind: "remote" as const,
+        target: "base-oid",
+        isHead: false,
+        upstream: null,
+        remote: "origin",
+      },
+    ];
+    expect(publishPromptDetails(featureSummary, mismatchedBranches)).toMatchObject({
+      title: "Publish feat/mcp",
+      defaultValue: "origin/feat/mcp",
+      defaultRemote: "origin",
+      confirmLabel: "Publish",
+    });
+
+    const slashedSummary = { ...summary, headBranch: "feat/topic" };
+    const slashedPeerBranches = [
+      localBranch({
+        name: "feat/topic",
+        upstream: "origin/feat/base",
+        upstreamRemote: "origin",
+        pushRemote: "origin",
+        sync: { status: "ahead", upstream: "origin/feat/base", ahead: 1, behind: 0 },
+      }),
+      {
+        name: "origin/feat/base",
+        kind: "remote" as const,
+        target: "base-oid",
+        isHead: false,
+        upstream: null,
+        remote: "origin",
+      },
+      {
+        name: "origin/feat/other",
+        kind: "remote" as const,
+        target: "other-oid",
+        isHead: false,
+        upstream: null,
+        remote: "origin/feat",
+      },
+    ];
+    expect(publishPromptDetails(slashedSummary, slashedPeerBranches)).toMatchObject({
+      title: "Publish feat/topic",
+      defaultValue: "origin/feat/topic",
+      defaultRemote: "origin",
+      confirmLabel: "Publish",
+    });
     expect(branchSyncIsUpToDate(branches, "main")).toBe(false);
     expect(branchSyncIsUpToDate([localBranch()], "main")).toBe(true);
     expect(

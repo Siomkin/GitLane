@@ -325,7 +325,7 @@ describe("useCommitExecutionController", () => {
     const prompt = requestPrompt.mock.calls[0][0] as PromptRequest;
     act(() => prompt.onSubmit("origin/main"));
 
-    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("main", "origin/main"));
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("main", "origin/main", "origin"));
     await waitFor(() => expect(openCreatePr).toHaveBeenCalledOnce());
   });
 

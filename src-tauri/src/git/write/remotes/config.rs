@@ -87,42 +87,41 @@ fn configured_push_urls(repo: &str, name: &str) -> Result<Vec<String>, String> {
 /// applies Git's URL rewrite rules, so this is the target the transport would
 /// really contact rather than merely the raw configured value.
 pub(super) fn push_endpoint(repo: &str, remote: &str) -> Result<String, String> {
-    ensure_operand(remote)?;
-    let endpoint = if remote == "." {
-        ".".to_string()
-    } else {
-        let raw = run_git_stdout_raw(repo, &["remote", "get-url", "--push", "--all", remote])?;
-        let mut records = raw.split(|byte| *byte == b'\n').collect::<Vec<_>>();
-        if records.last().is_some_and(|record| record.is_empty()) {
-            records.pop();
-        }
-        let endpoints = records
-            .into_iter()
-            .map(|record| {
-                let value = std::str::from_utf8(record)
-                    .map_err(|_| "A remote push URL is not valid UTF-8.".to_string())?;
-                if value.is_empty()
-                    || value.trim() != value
-                    || value.chars().any(char::is_control)
-                {
-                    return Err(format!(
-                        "Remote '{remote}' has a push URL with unsupported whitespace or control characters."
-                    ));
-                }
-                Ok(value.to_string())
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        if endpoints.len() != 1 {
-            return Err(format!(
-                "Remote '{remote}' must have exactly one push URL before it can be force-pushed safely."
-            ));
-        }
-        // INVARIANT: `len() != 1` returned above, so this iterator is non-empty.
-        endpoints.into_iter().next().expect("length checked")
-    };
+    let endpoints = effective_push_endpoints(repo, remote)?;
+    let [endpoint] = <[String; 1]>::try_from(endpoints).map_err(|_| {
+        format!(
+            "Remote '{remote}' must have exactly one push URL before it can be force-pushed safely."
+        )
+    })?;
     ensure_operand(&endpoint)?;
     ensure_url_has_no_credentials(&endpoint)?;
     Ok(endpoint)
+}
+
+/// All destinations as resolved by the same Git executable that will push.
+pub(crate) fn effective_push_endpoints(repo: &str, remote: &str) -> Result<Vec<String>, String> {
+    ensure_operand(remote)?;
+    if remote == "." {
+        return Ok(vec![".".to_string()]);
+    }
+    let raw = run_git_stdout_raw(repo, &["remote", "get-url", "--push", "--all", remote])?;
+    let mut records = raw.split(|byte| *byte == b'\n').collect::<Vec<_>>();
+    if records.last().is_some_and(|record| record.is_empty()) {
+        records.pop();
+    }
+    records
+        .into_iter()
+        .map(|record| {
+            let value = std::str::from_utf8(record)
+                .map_err(|_| "A remote push URL is not valid UTF-8.".to_string())?;
+            if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+                return Err(format!(
+                    "Remote '{remote}' has a push URL with unsupported whitespace or control characters."
+                ));
+            }
+            Ok(value.to_string())
+        })
+        .collect()
 }
 
 /// Return an opaque digest of the one effective push endpoint, safe to carry

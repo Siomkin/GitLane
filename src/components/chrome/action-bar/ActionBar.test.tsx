@@ -468,7 +468,7 @@ describe("ActionBar layout order", () => {
     expect(prompt?.title).toBe("Publish main");
     expect(prompt?.defaultValue).toBe("origin/main");
     prompt!.onSubmit("origin/main");
-    expect(publishBranch).toHaveBeenCalledWith("main", "origin/main");
+    expect(publishBranch).toHaveBeenCalledWith("main", "origin/main", "origin");
   });
 
   it("shows a failed publish as an error toast instead of dropping it", async () => {
@@ -515,7 +515,7 @@ describe("ActionBar layout order", () => {
     expect(prompt?.title).toBe("Publish main");
     expect(prompt?.defaultValue).toBe("origin/main");
     prompt!.onSubmit("origin/main");
-    expect(publishBranch).toHaveBeenCalledWith("main", "origin/main");
+    expect(publishBranch).toHaveBeenCalledWith("main", "origin/main", "origin");
   });
 
   it("opens the publish prompt when up to date with a differently-named upstream", () => {
@@ -551,6 +551,7 @@ describe("ActionBar layout order", () => {
     expect(publishBranch).toHaveBeenCalledWith(
       "infra/deploy-bootstrap-seed",
       "origin/infra/deploy-bootstrap-seed",
+      "origin",
     );
   });
 

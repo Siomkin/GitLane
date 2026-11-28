@@ -129,6 +129,8 @@ pub enum CheckState {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrCreateInput {
+    /// Repository verified by the dialog before publishing the PR head.
+    pub pr_repository_id: Option<String>,
     pub base: String,
     pub head: String,
     pub title: String,

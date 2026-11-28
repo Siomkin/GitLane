@@ -4,7 +4,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BranchKind, type BranchInfo, type PrReviewerCandidate } from "@/lib/api";
-import { defaultPublishTarget } from "@/lib/branchSync";
 import { useAccounts } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
 import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
@@ -15,6 +14,7 @@ import { branchNameOf, guessBase, readableRef } from "./branchRefs";
 import { bodyFromCommits, type PrTemplateRef } from "./prTemplates";
 import {
   mergeOrderNote,
+  resolvePrPublishPlan,
   stackCandidates,
   stackChain,
   stackMapRows,
@@ -39,6 +39,7 @@ export function useCreatePrForm() {
   const requestedHead = useUi((s) => s.createPrHead);
   const summary = useRepo((s) => s.summary);
   const branches = useRepo((s) => s.branches);
+  const remotes = useRepo((s) => s.remotes);
   const forge = useRepo((s) => s.forge);
   const prs = usePulls((s) => s.pullRequests);
   const createPr = usePulls((s) => s.createPr);
@@ -78,6 +79,7 @@ export function useCreatePrForm() {
   // once `createPr` reaches the store, which leaves the publish window open to
   // a second click — two pushes and two pull requests.
   const [submitting, setSubmitting] = useState(false);
+  const [pinnedPrRepositoryId, setPinnedPrRepositoryId] = useState<string>();
   const busyRef = useRef(false);
 
   // Stacking only holds inside one repository, and only on a forge whose adapter
@@ -167,14 +169,37 @@ export function useCreatePrForm() {
     setTab(DESCRIPTION_TAB.Write);
   };
 
-  // A branch with no upstream has no head ref on the forge yet. Rather than
-  // refusing, publish it as part of opening the pull request — which is what
-  // `gh pr create` does when it runs interactively.
+  // A branch with no upstream (or tracking a differently-named base) has no
+  // same-named upstream tracking yet. Auto-publish it only when its destination
+  // matches the PR's resolved target repository; otherwise block submission
+  // and explain that cross-repository PRs are unsupported.
   const headInfo = branches.find((b) => b.kind === BranchKind.Local && b.name === head);
-  const needsPublish = !!head && !!headInfo && !headInfo.upstream;
-  const publishTarget = needsPublish ? defaultPublishTarget(branches, head) : null;
+  const { publishTarget, publishRemote, crossRepoError: routingError, awaitingForge } = resolvePrPublishPlan({
+    head,
+    headInfo,
+    branches,
+    remotes,
+    forgeResolved: forge !== null,
+    prRemote: forge?.prRemote,
+    prRemotes: forge?.prRemotes,
+  });
 
-  const canSubmit = !!title.trim() && !!targetBranch && !!head && targetBranch !== head;
+  const currentPrRepositoryId = forge?.prRepositoryId ?? undefined;
+  const prRepositoryId = pinnedPrRepositoryId ?? (publishTarget ? currentPrRepositoryId : undefined);
+  let crossRepoError = routingError;
+  if (pinnedPrRepositoryId && pinnedPrRepositoryId !== currentPrRepositoryId) {
+    crossRepoError = "The pull request repository changed. Check the repository and reopen the pull request dialog.";
+  } else if (publishTarget && !prRepositoryId) {
+    crossRepoError = "GitLane could not verify the pull request repository for publishing. Push the branch manually or update the remote agent.";
+  }
+
+  const canSubmit =
+    !!title.trim() &&
+    !!targetBranch &&
+    !!head &&
+    targetBranch !== head &&
+    crossRepoError === null &&
+    !awaitingForge;
   const closeCurrent = () => close(dialogGeneration);
 
   const submit = async () => {
@@ -184,6 +209,9 @@ export function useCreatePrForm() {
     // the keyed PR-action runner's `busyRef`.
     if (!canSubmit || pending || busyRef.current) return;
     busyRef.current = true;
+    // A refresh during publish can turn the next submit into a create-only
+    // operation. Keep the selected destination even if publish fails partway.
+    if (publishTarget) setPinnedPrRepositoryId(prRepositoryId);
     // The dialog may be closed, reopened, or pointed at another repo while the
     // create is in flight; only the instance that started it may close on the
     // answer (the generation guard mirrors the previous dialog's contract).
@@ -200,7 +228,7 @@ export function useCreatePrForm() {
     try {
       const ok = await run(async () => {
         if (publishTarget) {
-          await publishBranch(head, publishTarget);
+          await publishBranch(head, publishTarget, publishRemote, prRepositoryId);
           // Publishing can take a while, and the dialog stays interactive
           // behind it. If it was closed, reopened, or pointed at another repo
           // in the meantime, the pull request must not be created at all —
@@ -222,14 +250,7 @@ export function useCreatePrForm() {
         // base mode, so the link step is skipped entirely.
         const stackBelow = stacked ? [...chain].reverse().map(({ num, url }) => ({ num, url })) : [];
         return createPr(
-          {
-            base: targetBranch,
-            head,
-            title: title.trim(),
-            body,
-            draft,
-            reviewers,
-          },
+          { base: targetBranch, head, title: title.trim(), body, draft, reviewers, prRepositoryId },
           stackBelow,
         );
       }, ownsResult);
@@ -297,6 +318,8 @@ export function useCreatePrForm() {
     },
     canSubmit,
     publishTarget,
+    crossRepoError,
+    awaitingForge,
     submitting,
     pending,
     creating,

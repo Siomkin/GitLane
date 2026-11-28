@@ -650,6 +650,7 @@ describe("push family — the target remote's account, not a repo-wide one", () 
       branch: "feat",
       expectedOid: HEAD_OID,
       upstream: "bucket/feat",
+      remote: null,
       auth: bucketAuth,
     });
   });

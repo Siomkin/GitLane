@@ -232,7 +232,13 @@ pub async fn create_pull_request(
     input: PrCreateInput,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
-    forge_op(path, account, move |p, ctx| ipc(p.create_pr(ctx, &input))).await
+    forge_op(path, account, move |p, ctx| {
+        if let Some(expected) = input.pr_repository_id.as_deref() {
+            ipc(ctx.check_pr_repository(expected))?;
+        }
+        ipc(p.create_pr(ctx, &input))
+    })
+    .await
 }
 
 /// Link existing pull requests into a GitHub stack, bottom-first. Separate from

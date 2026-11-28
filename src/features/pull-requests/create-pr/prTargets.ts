@@ -8,7 +8,16 @@
 // module is the create side, and borrows GitHub's own vocabulary — layer,
 // bottom, top, trunk.
 
+import { BranchKind, type BranchInfo, type RemoteInfo } from "@/lib/api";
+import {
+  remoteNamesOf,
+  remoteOfBranch,
+  resolveDefaultPublishTarget,
+  shouldPublishNamesake,
+} from "@/lib/branchSync";
 import { PR_STATE, type PrSummary } from "@/lib/prs";
+import { remoteNameForUpstream } from "@/lib/remoteAccounts";
+import { shortName } from "@/lib/remoteBranches";
 
 /** How a row in the target map is drawn. */
 export const STACK_ROW_KIND = {
@@ -176,4 +185,121 @@ export function mergeOrderNote(chain: PrSummary[]): string {
   if (chain.length === 0) return "";
   const bottomUp = [...chain].reverse().map((pr) => `#${pr.num}`);
   return `Merges bottom-up: ${bottomUp.join(", ")}, then this one.`;
+}
+
+export interface PrPublishPlan {
+  /** `remote/branch` to publish before creating the PR, or null if none. */
+  publishTarget: string | null;
+  /** Explicit remote for `publish_branch`, so an unfetched slashed remote
+   * (e.g. `origin/feat`) cannot hijack `origin/feat/topic`. */
+  publishRemote: string | null;
+  /** Inline explanation when the head branch cannot be published/submitted as
+   * a same-repository pull request on the resolved PR repository. */
+  crossRepoError: string | null;
+  /** True while forge detection is still pending and the head branch needs
+   * publishing — submission stays disabled until the PR repository is verified. */
+  awaitingForge: boolean;
+}
+
+const NO_MATCHING_PR_REMOTE =
+  "Cross-repository pull requests are not supported — no configured remote pushes to the resolved pull request repository.";
+
+const mismatchedPrRemoteError = (head: string, prRemote: string) =>
+  `Cross-repository pull requests are not supported — push ${head} to ${prRemote} or change the pull request repository.`;
+
+/** Decide whether opening a PR for `head` should auto-publish it first, and
+ * verify that the head branch's destination matches the PR's resolved target
+ * repository (`prRemote`). GitLane submits bare `--head <branch>` names, so
+ * cross-repository heads are blocked with an inline explanation, and pending
+ * forge detection holds submission until the target repository is known. */
+export function resolvePrPublishPlan(options: {
+  head: string;
+  headInfo: BranchInfo | undefined;
+  branches: BranchInfo[];
+  remotes: readonly Pick<RemoteInfo, "name">[];
+  forgeResolved: boolean;
+  prRemote: string | null | undefined;
+  prRemotes?: readonly string[] | undefined;
+}): PrPublishPlan {
+  const { head, headInfo, branches, remotes, forgeResolved, prRemote, prRemotes } = options;
+  const noPublish = {
+    publishTarget: null,
+    publishRemote: null,
+    crossRepoError: null,
+    awaitingForge: false,
+  };
+  if (!head || !headInfo) return noPublish;
+
+  const { upstream, upstreamRemote, pushRemote } = headInfo;
+  const needsPublish = !upstream || shouldPublishNamesake(headInfo, branches);
+  if (needsPublish && !forgeResolved) return { ...noPublish, awaitingForge: true };
+
+  const allowedPrRemotes =
+    prRemotes && prRemotes.length > 0
+      ? prRemotes
+      : prRemote
+        ? [prRemote]
+        : [];
+  const prRemoteKnown = prRemote !== undefined || prRemotes !== undefined;
+  const primaryPrRemote = prRemote ?? allowedPrRemotes[0] ?? null;
+  if (prRemote === null || (prRemotes !== undefined && allowedPrRemotes.length === 0)) {
+    return { ...noPublish, crossRepoError: NO_MATCHING_PR_REMOTE };
+  }
+
+  const allRemoteNames = [...new Set([...remotes.map((r) => r.name), ...remoteNamesOf(branches)])];
+  if (needsPublish) {
+    const { target: fallback, remote: fallbackRemote } = resolveDefaultPublishTarget(
+      branches,
+      head,
+      upstream,
+      false,
+      upstreamRemote,
+    );
+    // Older agents use "origin" even when no push remote was configured.
+    const legacyOrigin = pushRemote === "origin" &&
+      allRemoteNames.length > 0 && !allRemoteNames.includes("origin");
+    const configuredRemote = upstream
+      ? (!upstreamRemote || upstreamRemote === "." ? fallbackRemote : upstreamRemote)
+      : (pushRemote && pushRemote !== "." && !legacyOrigin ? pushRemote : null);
+    if (
+      prRemoteKnown &&
+      primaryPrRemote &&
+      (upstream || configuredRemote) &&
+      (!configuredRemote || !allowedPrRemotes.includes(configuredRemote))
+    ) {
+      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, primaryPrRemote) };
+    }
+
+    const publishRemote =
+      configuredRemote && allowedPrRemotes.includes(configuredRemote)
+        ? configuredRemote
+        : primaryPrRemote ?? (upstream ? configuredRemote : null);
+    return {
+      ...noPublish,
+      publishTarget: publishRemote ? `${publishRemote}/${head}` : fallback,
+      publishRemote: publishRemote ?? fallbackRemote,
+    };
+  }
+
+  const effectiveRemote = pushRemote ?? upstreamRemote ??
+    (upstream ? remoteNameForUpstream(upstream, allRemoteNames) : null);
+  if (
+    prRemoteKnown &&
+    primaryPrRemote &&
+    effectiveRemote &&
+    effectiveRemote !== "." &&
+    !allowedPrRemotes.includes(effectiveRemote)
+  ) {
+    const existsOnPrRemote = branches.some(
+      (branch) =>
+        branch.kind === BranchKind.Remote &&
+        allowedPrRemotes.includes(remoteOfBranch(branch, allRemoteNames) ?? "") &&
+        shortName(branch) === head,
+    );
+    if (!existsOnPrRemote) {
+      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, primaryPrRemote) };
+    }
+  }
+
+  return noPublish;
 }

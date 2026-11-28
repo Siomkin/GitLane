@@ -676,7 +676,7 @@ describe("BranchContextMenu", () => {
     expect(prompt?.defaultValue).toBe("origin/feature");
     prompt!.onSubmit("origin/feature");
 
-    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feature", "origin/feature"));
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feature", "origin/feature", "origin"));
     expect(pushBranch).not.toHaveBeenCalled();
   });
 
@@ -706,7 +706,7 @@ describe("BranchContextMenu", () => {
     expect(prompt?.defaultValue).toBe("origin/main");
     prompt!.onSubmit("origin/main");
 
-    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("main", "origin/main"));
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("main", "origin/main", "origin"));
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -776,6 +776,7 @@ describe("BranchContextMenu", () => {
       expect(publishBranch).toHaveBeenCalledWith(
         "infra/deploy-bootstrap-seed",
         "origin/infra/deploy-bootstrap-seed",
+        "origin",
       ),
     );
   });
@@ -1122,6 +1123,41 @@ describe("BranchContextMenu", () => {
       expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain("HEAD changed"),
     );
     expect(useUi.getState().confirm).toBeNull();
+  });
+
+  it("hides Force push (with lease) in Danger zone for a diverged branch tracking a differently-named base", () => {
+    useRepo.setState({
+      summary: {
+        path: "/work/repo",
+        workdir: "/work/repo",
+        headBranch: "feat/mcp",
+        headOid: "feat-oid",
+        detached: false,
+        unborn: false,
+        isWorktree: false,
+      },
+      branches: [
+        {
+          ...localBranch("feat/mcp"),
+          isHead: true,
+          upstream: "origin/develop",
+          upstreamRemote: "origin",
+          pushRemote: "origin",
+          sync: { status: "diverged", upstream: "origin/develop", ahead: 2, behind: 1 },
+        },
+        remoteBranch("origin/develop"),
+      ],
+    });
+    useUi.setState({
+      menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feat/mcp", isCurrent: true } },
+    });
+
+    render(<BranchContextMenu />);
+    openGroup("Danger zone");
+    expect(screen.queryByRole("menuitem", { name: "Force push (with lease)…" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
+    expect(useUi.getState().prompt?.defaultValue).toBe("origin/feat/mcp");
   });
 });
 

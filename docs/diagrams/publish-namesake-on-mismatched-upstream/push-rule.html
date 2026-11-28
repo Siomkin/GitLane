@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>When Push opens the Publish prompt instead of pushing directly</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 980px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">fix/publish-namesake-on-mismatched-upstream · Flowchart</p>
+    <h1>When Push opens the Publish prompt instead of pushing directly</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 980 672" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="push-rule-title push-rule-desc">
+        <title id="push-rule-title">When Push opens the Publish prompt instead of pushing directly</title>
+        <desc id="push-rule-desc">Decision flow for shouldPublishNamesake in branchSync.ts: across upToDate, ahead, behind, and diverged states, any local branch tracking a differently-named remote branch with no overriding pushRemote routes Push, branch-menu Push, and Commit and Push to the Publish prompt (even if a same-named remote already exists) and hides leased Force push.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS (drawn behind nodes) -->
+        <!-- Start -> D1 -->
+        <line x1="410" y1="98" x2="410" y2="124" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D1 NO -> Left box -->
+        <line x1="264" y1="170" x2="214" y2="170" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D1 YES -> D2 -->
+        <line x1="410" y1="216" x2="410" y2="244" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D2 YES -> Triangular fork -->
+        <line x1="556" y1="290" x2="646" y2="290" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D2 NO -> D3 -->
+        <line x1="410" y1="336" x2="410" y2="364" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D3 NO -> Standard push -->
+        <line x1="556" y1="410" x2="646" y2="410" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D3 YES -> Focal outcome -->
+        <line x1="410" y1="456" x2="410" y2="486" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="228" y="152" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="240" y="161" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <rect x="418" y="224" width="26" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="431" y="233" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <rect x="588" y="272" width="26" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="601" y="281" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <rect x="418" y="344" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="430" y="353" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <rect x="589" y="392" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="601" y="401" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <rect x="418" y="464" width="26" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="431" y="473" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <!-- NODES -->
+        <!-- Start -->
+        <rect x="282" y="48" width="256" height="50" rx="22" fill="#f5f5f5"/>
+        <rect x="282" y="48" width="256" height="50" rx="22" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="410" y="69" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Check local branch</text>
+        <text x="410" y="85" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">shouldPublishNamesake · branchSync.ts</text>
+
+        <!-- D1 -->
+        <polygon points="410,124 556,170 410,216 264,170" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="410" y="165" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Live sync state?</text>
+        <text x="410" y="180" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">upToDate · ahead · behind · diverged</text>
+
+        <!-- Left outcome -->
+        <rect x="40" y="142" width="174" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="40" y="142" width="174" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="127" y="166" fill="#2d3142" font-size="11.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Other sync state</text>
+        <text x="127" y="182" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">noUpstream / stale -&gt; Publish</text>
+
+        <!-- D2 -->
+        <polygon points="410,244 556,290 410,336 264,290" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="410" y="286" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Explicit pushRemote</text>
+        <text x="410" y="301" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">differs from upstream?</text>
+
+        <!-- Right box 1: Triangular fork -->
+        <rect x="646" y="260" width="290" height="60" rx="6" fill="#f5f5f5"/>
+        <rect x="646" y="260" width="290" height="60" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="791" y="285" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Keep triangular fork push</text>
+        <text x="791" y="301" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pushes to &lt;pushRemote&gt;/&lt;local&gt;</text>
+
+        <!-- D3 -->
+        <polygon points="410,364 556,410 410,456 264,410" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="410" y="406" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tracked branch name</text>
+        <text x="410" y="421" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">differs from local?</text>
+
+        <!-- Right box 2: Standard push / force-push -->
+        <rect x="646" y="380" width="290" height="60" rx="6" fill="#f5f5f5"/>
+        <rect x="646" y="380" width="290" height="60" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="791" y="405" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Standard push / force-push</text>
+        <text x="791" y="421" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">returns false · keeps upstream sync</text>
+
+        <!-- Focal outcome -->
+        <rect x="234" y="486" width="352" height="58" rx="6" fill="#f5f5f5"/>
+        <rect x="234" y="486" width="352" height="58" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="410" y="510" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Open Publish prompt · hide Force push</text>
+        <text x="410" y="527" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">&lt;targetRemote&gt;/&lt;local&gt; · toolbar, branch menu &amp; Commit &amp; Push</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="576" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Even if &lt;targetRemote&gt;/&lt;local&gt; already exists, tracking a differently-named base still prompts so Push and Force push never target origin/develop.</text>
+        <text x="40" y="591" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">resolveDefaultPublishTarget derives both the prompt default and explicit remote from upstreamRemote so a slashed peer remote (origin/feat) cannot hijack it.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="610" x2="936" y2="610" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="626" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="40" y="642" width="20" height="10" rx="5" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="66" y="650" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Start</text>
+
+        <polygon points="142,640 152,647 142,654 132,647" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="160" y="650" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision</text>
+
+        <rect x="236" y="642" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="256" y="650" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Preserved path</text>
+
+        <rect x="364" y="642" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="384" y="650" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Publish namesake guard (changed by this fix)</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

@@ -372,6 +372,7 @@ mod tests {
     #[test]
     fn a_signed_out_origin_session_is_an_auth_error_naming_origin_login() {
         let ctx = GithubContext {
+            pr_repository_id: String::new(),
             workdir: ".".into(),
             repository: GithubRepository {
                 host: crate::git::forge::ApiAuthority::new("origin.cursor.com".into()),
@@ -403,6 +404,7 @@ mod tests {
 
     fn create_input(draft: bool) -> PrCreateInput {
         PrCreateInput {
+            pr_repository_id: None,
             base: "main".into(),
             head: "feature/origin-prs".into(),
             title: "Origin PR support".into(),

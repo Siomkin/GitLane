@@ -44,6 +44,24 @@ fn branch_info_reports_git_push_remote_precedence() {
 }
 
 #[test]
+fn branch_info_omits_push_remote_when_none_is_configured() {
+    let dir = TempRepo::new("push-remote-unconfigured");
+    let repo = Repository::init(dir.path()).unwrap();
+    commit(&repo, "refs/heads/main", "base", &[]);
+    repo.set_head("refs/heads/main").unwrap();
+    repo.remote("team", "https://github.com/org/app.git")
+        .unwrap();
+
+    let branch = branches(dir.path().to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.kind == BranchKind::Local && branch.name == "main")
+        .unwrap();
+    assert_eq!(branch.upstream_remote, None);
+    assert_eq!(branch.push_remote, None);
+}
+
+#[test]
 fn branch_info_preserves_local_upstream_and_push_remote() {
     let dir = TempRepo::new("local-push-remote");
     let repo = Repository::init(dir.path()).unwrap();

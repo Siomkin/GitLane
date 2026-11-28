@@ -136,6 +136,19 @@ function CreatePrDialogBody() {
         {/* The merge order gets its own line. Sharing the action row meant a
             three-layer stack ("Merges bottom-up: #322, #323, then this one.")
             wrapped the checkbox and both buttons alongside it. */}
+        {form.awaitingForge && (
+          <div className="mb-2.5 text-[12px] text-neutral-500 dark:text-neutral-400">
+            Checking pull request repository…
+          </div>
+        )}
+        {form.crossRepoError && (
+          <div
+            role="alert"
+            className="mb-2.5 text-[12px] text-amber-700 dark:text-amber-400"
+          >
+            {form.crossRepoError}
+          </div>
+        )}
         {form.mergeNote && (
           <div className="mb-2.5 text-[12px] text-neutral-500 dark:text-neutral-400">
             {form.mergeNote}

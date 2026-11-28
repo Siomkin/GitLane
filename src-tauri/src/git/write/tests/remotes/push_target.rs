@@ -28,6 +28,7 @@ fn network_branch_writes_reject_a_stale_local_tip_before_transport() {
             "main",
             &base,
             "origin/main",
+            None,
             &TransportCredential::None,
         )
         .is_err()
@@ -115,6 +116,7 @@ fn publish_branch_validates_upstream_format_before_pushing() {
             "main",
             &head,
             "originmain",
+            None,
             &TransportCredential::None
         )
         .is_err(),
@@ -126,6 +128,7 @@ fn publish_branch_validates_upstream_format_before_pushing() {
             "main",
             &head,
             "/main",
+            None,
             &TransportCredential::None
         )
         .is_err(),
@@ -137,6 +140,7 @@ fn publish_branch_validates_upstream_format_before_pushing() {
             "main",
             &head,
             "origin/",
+            None,
             &TransportCredential::None
         )
         .is_err(),
@@ -148,6 +152,7 @@ fn publish_branch_validates_upstream_format_before_pushing() {
             "--upload-pack=x",
             &head,
             "origin/main",
+            None,
             &TransportCredential::None
         )
         .is_err(),
@@ -167,6 +172,7 @@ fn publish_branch_pushes_the_captured_oid_and_sets_tracking_config() {
         "main",
         &head,
         "origin/review",
+        None,
         &TransportCredential::None,
     )
     .expect("publish captured commit");
@@ -225,15 +231,52 @@ fn publish_remote_splits_on_longest_configured_remote() {
     ]);
 
     assert_eq!(
-        publish_remote(repo.path(), "origin/x/feature").expect("split"),
+        publish_remote(repo.path(), "origin/x/feature", None).expect("split"),
         "origin/x",
         "the longest configured remote name must win"
     );
     assert_eq!(
-        publish_remote(repo.path(), "origin/feature").expect("split"),
+        publish_remote(repo.path(), "origin/x/feature", Some("origin")).expect("explicit"),
+        "origin",
+        "an explicit remote overrides a longer slashed remote prefix"
+    );
+    assert_eq!(
+        publish_remote(repo.path(), "origin/feature", None).expect("split"),
         "origin"
     );
-    assert!(publish_remote(repo.path(), "no-slash").is_err());
+    assert!(publish_remote(repo.path(), "no-slash", None).is_err());
+}
+
+#[test]
+fn publish_branch_with_explicit_remote_avoids_slashed_remote_shadowing() {
+    let origin_remote = TempRepo::new("publish-explicit-origin");
+    origin_remote.git_ok(&["init", "-q", "--bare"]);
+    let shadow_remote = TempRepo::new("publish-explicit-shadow");
+    shadow_remote.git_ok(&["init", "-q", "--bare"]);
+    let (repo, head) = repo_with_base_commit("publish-explicit-local");
+    repo.git_ok(&["checkout", "-q", "-b", "feat/topic"]);
+    repo.git_ok(&["remote", "set-url", "origin", origin_remote.path()]);
+    repo.git_ok(&["config", "remote.origin/feat.url", shadow_remote.path()]);
+
+    publish_branch(
+        repo.path(),
+        "feat/topic",
+        &head,
+        "origin/feat/topic",
+        Some("origin"),
+        &TransportCredential::None,
+    )
+    .expect("publish to explicit origin remote");
+
+    assert_eq!(rev_parse(&origin_remote, "refs/heads/feat/topic"), head);
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.feat/topic.remote"]).stdout).trim(),
+        "origin"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.feat/topic.merge"]).stdout).trim(),
+        "refs/heads/feat/topic"
+    );
 }
 
 /// A dash-led remote read from config would otherwise reach `git push` as an option.

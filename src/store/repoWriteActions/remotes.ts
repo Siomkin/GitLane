@@ -61,12 +61,14 @@ export function createRemoteActions(
         return `Pushed ${branch}`;
       })),
 
-    publishBranch: (branch, upstream) =>
+    publishBranch: (branch, upstream, explicitRemote, prRepositoryId) =>
       withActiveRefWrite(set, get, [{ name: branch, kind: "local" }], () => runOp(get, async (summary) => {
-        const remote = remoteNameForUpstream(
-          upstream,
-          get().remotes.map((r) => r.name),
-        );
+        const remote =
+          explicitRemote ??
+          remoteNameForUpstream(
+            upstream,
+            get().remotes.map((r) => r.name),
+          );
         const expectedOid = localBranchOid(get, branch);
         const auth = authFor(remote);
         await trackNet(set, get, () => api.publishBranch(
@@ -75,6 +77,8 @@ export function createRemoteActions(
           expectedOid,
           upstream,
           auth,
+          explicitRemote ?? null,
+          prRepositoryId,
         ));
         return `Published ${branch} to ${upstream}`;
       })),

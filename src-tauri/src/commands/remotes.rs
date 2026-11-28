@@ -247,17 +247,33 @@ pub async fn publish_branch(
     branch: String,
     expected_oid: String,
     upstream: String,
+    remote: Option<String>,
+    pr_repository_id: Option<String>,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, CommandError> {
-    blocking(move || {
-        let remote = git::write::remotes::publish_remote(&path, &upstream)?;
+    blocking(move || -> Result<String, CommandError> {
+        let resolved_remote =
+            git::write::remotes::publish_remote(&path, &upstream, remote.as_deref())?;
+        if let Some(expected) = pr_repository_id {
+            let (_, ctx) = git::forge::context(&path, None)?;
+            ctx.check_pr_repository(&expected)?;
+            let endpoints = git::write::remotes::effective_push_endpoints(&path, &resolved_remote)?;
+            ctx.check_pr_push_urls(&endpoints)?;
+        }
         let cred = transport_cred(
             &path,
-            &remote,
+            &resolved_remote,
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::remotes::publish_branch(&path, &branch, &expected_oid, &upstream, &cred)
+        Ok(git::write::remotes::publish_branch(
+            &path,
+            &branch,
+            &expected_oid,
+            &upstream,
+            Some(resolved_remote.as_str()),
+            &cred,
+        )?)
     })
     .await
 }
