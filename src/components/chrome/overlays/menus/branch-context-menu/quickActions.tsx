@@ -1,7 +1,6 @@
 import {
-  defaultPublishRemote,
-  defaultPublishTarget,
   publishUsesConfiguredUpstream,
+  resolveDefaultPublishTarget,
 } from "@/lib/branchSync";
 import { ShortcutId } from "@/lib/shortcuts";
 import {
@@ -46,8 +45,13 @@ export function quickActionItems(ctx: BranchMenuContext): MenuItem[] {
 
   const promptPublishBranch = () => {
     const upstreamResolves = publishUsesConfiguredUpstream(info, branches);
-    const defaultValue = defaultPublishTarget(branches, b, upstream, upstreamResolves);
-    const defaultRemote = defaultPublishRemote(branches, upstream);
+    const { target: defaultValue, remote: defaultRemote } = resolveDefaultPublishTarget(
+      branches,
+      b,
+      upstream,
+      upstreamResolves,
+      info?.upstreamRemote,
+    );
     requestPrompt({
       title: `Publish ${b}`,
       message: `Remote branch for ${b} to push to and pull from.`,

@@ -7,9 +7,9 @@ When a local feature branch was created outside GitLane from a differently-named
 ## What Changes
 
 - **Extend and tighten `shouldPublishNamesake` (`src/lib/branchSync.ts`)**:
-  - Match all live synced states (`upToDate`, `ahead`, `behind`, `diverged`) where the mismatched upstream resolves.
+  - Match all live synced states (`upToDate`, `ahead`, `behind`, `diverged`) where the mismatched upstream resolves, even when a same-named remote-tracking ref already exists on the target remote (so ordinary Push and Force push never silently target a shared base via `branch.<name>.merge`).
   - Preserve explicit triangular push-remote routing: return `false` whenever `branch.pushRemote` differs from the branch's upstream remote (`branch.<name>.pushRemote` or `remote.pushDefault`), because `push_destination` already targets `<pushRemote>/<local>`.
-  - Scope the namesake remote-tracking ref lookup to the branch's target remote (instead of matching any remote), so `backup/feat` does not bypass the guard when tracking `origin/develop`.
+  - Resolve both the default publish target and explicit remote from a single helper that prefers the backend-resolved `upstreamRemote`, so a longer slashed remote name cannot hijack `origin/feat/base`.
 - **Suppress leased force-push in both toolbar and branch menu (`src/lib/branchSync.ts`, `src/components/chrome/overlays/menus/branchContextMenuPolicy.ts`, `src/components/chrome/overlays/menus/branch-context-menu/destructiveActions.tsx`)**:
   - Disable `canForcePush` in `currentBranchSyncView` and hide `Force push (with lease)…` in the branch menu's Danger zone whenever `shouldPublishNamesake` is true.
 - **Align Commit & Push publish prompt default (`src/features/changes/commit-modal/commitComposerModel.ts`)**:
@@ -35,7 +35,7 @@ _(none)_
 - Changing Rust `push_destination` / `push_branch` (`src-tauri/src/git/write/remotes/push.rs`): the write layer intentionally honours `branch.<name>.merge` when a user or test explicitly pushes a configured divergent upstream.
 - Implementing cross-repository / fork pull request creation (`--head owner:branch`) across forge providers.
 - Changing branch creation (`create_branch` / `add_worktree`): `#418` already passes `--no-track` for differently-named remote starts created inside GitLane.
-- Changing behavior when a same-named remote-tracking ref already exists on the target remote or when the branch tracks a same-named upstream.
+- Changing behavior when a branch tracks a same-named upstream.
 
 ## Impact
 

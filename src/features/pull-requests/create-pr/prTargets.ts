@@ -10,9 +10,9 @@
 
 import { BranchKind, type BranchInfo, type RemoteInfo } from "@/lib/api";
 import {
-  defaultPublishTarget,
   remoteNamesOf,
   remoteOfBranch,
+  resolveDefaultPublishTarget,
   shouldPublishNamesake,
 } from "@/lib/branchSync";
 import { PR_STATE, type PrSummary } from "@/lib/prs";
@@ -219,8 +219,9 @@ export function resolvePrPublishPlan(options: {
   remotes: readonly Pick<RemoteInfo, "name">[];
   forgeResolved: boolean;
   prRemote: string | null | undefined;
+  prRemotes?: readonly string[] | undefined;
 }): PrPublishPlan {
-  const { head, headInfo, branches, remotes, forgeResolved, prRemote } = options;
+  const { head, headInfo, branches, remotes, forgeResolved, prRemote, prRemotes } = options;
   const noPublish = {
     publishTarget: null,
     publishRemote: null,
@@ -232,23 +233,47 @@ export function resolvePrPublishPlan(options: {
   const { upstream, upstreamRemote, pushRemote } = headInfo;
   const needsPublish = !upstream || shouldPublishNamesake(headInfo, branches);
   if (needsPublish && !forgeResolved) return { ...noPublish, awaitingForge: true };
-  if (prRemote === null) return { ...noPublish, crossRepoError: NO_MATCHING_PR_REMOTE };
+
+  const allowedPrRemotes =
+    prRemotes && prRemotes.length > 0
+      ? prRemotes
+      : prRemote
+        ? [prRemote]
+        : [];
+  const prRemoteKnown = prRemote !== undefined || prRemotes !== undefined;
+  const primaryPrRemote = prRemote ?? allowedPrRemotes[0] ?? null;
+  if (prRemote === null || (prRemotes !== undefined && allowedPrRemotes.length === 0)) {
+    return { ...noPublish, crossRepoError: NO_MATCHING_PR_REMOTE };
+  }
 
   const allRemoteNames = [...new Set([...remotes.map((r) => r.name), ...remoteNamesOf(branches)])];
   if (needsPublish) {
-    const fallback = defaultPublishTarget(branches, head, upstream, false);
-    const fallbackRemote = remoteNameForUpstream(fallback, allRemoteNames);
+    const { target: fallback, remote: fallbackRemote } = resolveDefaultPublishTarget(
+      branches,
+      head,
+      upstream,
+      false,
+      upstreamRemote,
+    );
     // Older agents use "origin" even when no push remote was configured.
     const legacyOrigin = pushRemote === "origin" &&
       allRemoteNames.length > 0 && !allRemoteNames.includes("origin");
     const configuredRemote = upstream
       ? (!upstreamRemote || upstreamRemote === "." ? fallbackRemote : upstreamRemote)
       : (pushRemote && pushRemote !== "." && !legacyOrigin ? pushRemote : null);
-    if (prRemote !== undefined && (upstream || configuredRemote) && configuredRemote !== prRemote) {
-      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, prRemote) };
+    if (
+      prRemoteKnown &&
+      primaryPrRemote &&
+      (upstream || configuredRemote) &&
+      (!configuredRemote || !allowedPrRemotes.includes(configuredRemote))
+    ) {
+      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, primaryPrRemote) };
     }
 
-    const publishRemote = prRemote || (upstream ? configuredRemote : null);
+    const publishRemote =
+      configuredRemote && allowedPrRemotes.includes(configuredRemote)
+        ? configuredRemote
+        : primaryPrRemote ?? (upstream ? configuredRemote : null);
     return {
       ...noPublish,
       publishTarget: publishRemote ? `${publishRemote}/${head}` : fallback,
@@ -258,15 +283,21 @@ export function resolvePrPublishPlan(options: {
 
   const effectiveRemote = pushRemote ?? upstreamRemote ??
     (upstream ? remoteNameForUpstream(upstream, allRemoteNames) : null);
-  if (prRemote !== undefined && effectiveRemote && effectiveRemote !== "." && effectiveRemote !== prRemote) {
+  if (
+    prRemoteKnown &&
+    primaryPrRemote &&
+    effectiveRemote &&
+    effectiveRemote !== "." &&
+    !allowedPrRemotes.includes(effectiveRemote)
+  ) {
     const existsOnPrRemote = branches.some(
       (branch) =>
         branch.kind === BranchKind.Remote &&
-        remoteOfBranch(branch, allRemoteNames) === prRemote &&
+        allowedPrRemotes.includes(remoteOfBranch(branch, allRemoteNames) ?? "") &&
         shortName(branch) === head,
     );
     if (!existsOnPrRemote) {
-      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, prRemote) };
+      return { ...noPublish, crossRepoError: mismatchedPrRemoteError(head, primaryPrRemote) };
     }
   }
 

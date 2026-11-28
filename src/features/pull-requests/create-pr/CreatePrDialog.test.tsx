@@ -802,7 +802,7 @@ describe("CreatePrDialog stack targeting", () => {
 describe("CreatePrDialog publish target & cross-repository guard", () => {
   const realPublishBranch = useRepo.getState().publishBranch;
 
-  const githubForge = (prRemote: string | null) => ({
+  const githubForge = (prRemote: string | null, prRemotes?: string[]) => ({
     hasRemote: true,
     kind: ForgeKind.GitHub,
     forge: "GitHub",
@@ -810,6 +810,7 @@ describe("CreatePrDialog publish target & cross-repository guard", () => {
     webUrl: "https://github.com/o/r",
     capabilities: capabilitiesFor(ForgeKind.GitHub),
     prRemote,
+    ...(prRemotes ? { prRemotes } : {}),
     prRepositoryId: "pr-repository",
   });
 
@@ -1091,6 +1092,37 @@ describe("CreatePrDialog publish target & cross-repository guard", () => {
       await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "team/feat/x", "team", "pr-repository"));
       await waitFor(() => expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x", prRepositoryId: "pr-repository" }), []));
       resolve("https://github.com/o/r/pull/102");
+    } finally {
+      useRepo.setState({ publishBranch: realPublishBranch });
+    }
+  });
+
+  it("allows an unpublished branch configured to push to a same-repository remote alias", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    const { createPr, resolve } = deferredCreate();
+    useRepo.setState({
+      publishBranch,
+      forge: githubForge("origin", ["origin", "mirror"]),
+      remotes: [
+        { name: "origin", fetchUrl: "https://github.com/o/r.git", pushUrl: "https://github.com/o/r.git", isDefault: true },
+        { name: "mirror", fetchUrl: "git@github.com:o/r.git", pushUrl: "git@github.com:o/r.git", isDefault: false },
+      ],
+      branches: [
+        { kind: "local", name: "feat/x", target: "aaa", isHead: true, upstream: null, pushRemote: "mirror", remote: null },
+        { kind: "remote", name: "origin/develop", target: "bbb", isHead: false, upstream: null, remote: "origin" },
+      ] as never,
+    });
+    try {
+      render(<CreatePrDialog />);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByText("mirror/feat/x")).toBeInTheDocument();
+
+      await userEvent.type(screen.getByPlaceholderText("Title"), "Mirror alias PR");
+      await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+
+      await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "mirror/feat/x", "mirror", "pr-repository"));
+      await waitFor(() => expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ head: "feat/x", prRepositoryId: "pr-repository" }), []));
+      resolve("https://github.com/o/r/pull/104");
     } finally {
       useRepo.setState({ publishBranch: realPublishBranch });
     }

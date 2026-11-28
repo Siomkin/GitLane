@@ -115,11 +115,14 @@ export const currentBranchSyncView = (
   }
 
   const publishNamesake = shouldPublishNamesake(branch, branches);
+  const title = !publishNamesake
+    ? syncTitle(sync)
+    : hasSameNameRemote(branch, branches)
+      ? `${head.branch} tracks ${sync.upstream ?? "another branch"} instead of its own remote branch. Push will ask where to publish.`
+      : `${head.branch} tracks ${sync.upstream ?? "another branch"} and has no remote of the same name yet. Push will publish it.`;
   return {
     label: syncBadgeLabel(sync),
-    title: publishNamesake
-      ? `${head.branch} tracks ${sync.upstream ?? "another branch"} and has no remote of the same name yet. Push will publish it.`
-      : syncTitle(sync),
+    title,
     canPull: canPull(sync),
     canPush: canPush(sync) || publishNamesake,
     canForcePush: !publishNamesake && canForcePush(sync),
@@ -138,8 +141,8 @@ const canPull = (sync: BranchSyncState) =>
 // A plain `git push` is rejected non-fast-forward when `diverged`; that case is
 // `canForcePush` on the toolbar (and still in the branch menu). `noUpstream`
 // and `staleUpstream` route through the publish prompt (see `needsPublishPrompt`).
-// An up-to-date branch that tracks a *differently-named* remote with no
-// same-named counterpart is also a publish (handled in `currentBranchSyncView`).
+// A branch that tracks a *differently-named* remote is also routed to Publish
+// (handled in `currentBranchSyncView`).
 const canPush = (sync: BranchSyncState) =>
   sync.status === "ahead" ||
   sync.status === "unknown" ||
@@ -158,14 +161,15 @@ const LIVE_MISMATCH_SYNC_STATUSES = new Set<BranchSyncState["status"]>([
   "diverged",
 ]);
 
-/** True when the local branch tracks a differently-named remote, has no
- * explicit push remote overriding that upstream remote, and no same-named
- * remote-tracking ref exists on that target remote. `git checkout -b feat
+/** True when the local branch tracks a differently-named remote and has no
+ * explicit push remote overriding that upstream remote. `git checkout -b feat
  * origin/develop` leaves `feat` tracking `develop`; Push (and Commit & Push)
- * should publish `<remote>/feat` across all live sync states (`upToDate`,
- * `ahead`, `behind`, `diverged`) rather than pushing or force-pushing onto
- * `develop`. Triangular fork setups (`pushRemote !== upstreamRemote`) already
- * push to `<pushRemote>/<local>` in the write layer and are left untouched. */
+ * should route through the Publish prompt pre-filled with `<remote>/feat`
+ * across all live sync states (`upToDate`, `ahead`, `behind`, `diverged`) —
+ * even if `<remote>/feat` already exists — rather than pushing or
+ * force-pushing onto `develop`. Triangular fork setups
+ * (`pushRemote !== upstreamRemote`) already push to `<pushRemote>/<local>` in
+ * the write layer and are left untouched. */
 export const shouldPublishNamesake = (
   branch: BranchInfo | undefined,
   branches: BranchInfo[],
@@ -181,12 +185,19 @@ export const shouldPublishNamesake = (
     return false;
   }
   const tracked = trackedBranchName(branch, remoteNames);
-  if (!tracked || tracked === branch.name) return false;
+  return Boolean(tracked && tracked !== branch.name);
+};
+
+const hasSameNameRemote = (branch: BranchInfo, branches: BranchInfo[]): boolean => {
+  const remoteNames = remoteNamesOf(branches);
+  const upstream = branch.sync?.upstream ?? branch.upstream;
+  const upstreamRemote =
+    branch.upstreamRemote ?? (upstream ? remoteNameForUpstream(upstream, remoteNames) : null);
   const targetRemote =
     upstreamRemote && upstreamRemote !== "."
       ? upstreamRemote
       : fallbackRemote(remoteNames);
-  return !branches.some(
+  return branches.some(
     (item) =>
       item.kind === BranchKind.Remote &&
       remoteOfBranch(item, remoteNames) === targetRemote &&
@@ -195,8 +206,8 @@ export const shouldPublishNamesake = (
 };
 
 /** Whether the publish prompt should pre-fill the configured upstream. Stale
- * remotes and a same-name-unpublished mismatched upstream both retarget to
- * `origin/<local>` (keeping the configured remote). */
+ * remotes and mismatched upstreams both retarget to `<remote>/<local>`
+ * (keeping the configured remote). */
 export const publishUsesConfiguredUpstream = (
   branch: BranchInfo | undefined,
   branches: BranchInfo[],
@@ -228,47 +239,75 @@ export const remoteNamesOf = (branches: BranchInfo[]): string[] => [
   ),
 ];
 
+export interface PublishTargetDefault {
+  /** Pre-filled `remote/branch` string for the publish prompt. */
+  target: string;
+  /** Explicit remote matching `target`, passed to `publish_branch` when the
+   * user accepts the default so a longer slashed remote name cannot hijack it. */
+  remote: string;
+}
+
+/** Resolve both the default `remote/branch` prompt value and its explicit
+ * remote from one source. Prefers the backend-resolved `upstreamRemote`
+ * (ignoring Git's `.` local-tracking pseudo-remote) so a longer slashed remote
+ * like `origin/feat` cannot hijack `origin/feat/base`, and a `.`-remote
+ * slashed local branch never turns its first path segment into a remote name. */
+export const resolveDefaultPublishTarget = (
+  branches: BranchInfo[],
+  branchName: string,
+  upstream?: string | null,
+  upstreamResolves = true,
+  upstreamRemote?: string | null,
+): PublishTargetDefault => {
+  const remoteNames = remoteNamesOf(branches);
+  const resolvedRemote =
+    upstreamRemote && upstreamRemote !== "."
+      ? upstreamRemote
+      : upstream && upstreamRemote !== "."
+        ? remoteNameForUpstream(upstream, remoteNames)
+        : null;
+  if (upstream && upstreamResolves) {
+    return {
+      target: upstream,
+      remote: resolvedRemote ?? fallbackRemote(remoteNames),
+    };
+  }
+  const remote = resolvedRemote ?? fallbackRemote(remoteNames);
+  return {
+    target: `${remote}/${branchName}`,
+    remote,
+  };
+};
+
 /** The default `remote/branch` to pre-fill a publish prompt with. Prefers the
  * branch's configured upstream, then a remote named `origin`, then the first
  * remote present in the branch list — so multi-remote repos get a stable,
  * predictable default rather than whichever remote-tracking ref sorts first.
  *
  * Pass `upstreamResolves: false` when the configured upstream is *stale* (its
- * remote ref was pruned): re-publishing the deleted branch name is almost never
- * what the user wants, so only the stale upstream's **remote** is kept and the
- * branch defaults back to the local name (`origin/deleted` → `origin/<branch>`).
- * The same retarget applies when {@link shouldPublishNamesake} is true. */
+ * remote ref was pruned) or covered by {@link shouldPublishNamesake}. */
 export const defaultPublishTarget = (
   branches: BranchInfo[],
   branchName: string,
   upstream?: string | null,
   upstreamResolves = true,
-): string => {
-  if (upstream) {
-    if (upstreamResolves) return upstream;
-    // Keep the configured remote, drop the pruned branch name. A bare upstream
-    // (a `.`-remote local-tracking ref, no slash) has no remote to keep — fall
-    // through to deriving one from the remote list.
-    const kept = remoteNameForUpstream(upstream, remoteNamesOf(branches));
-    if (kept) return `${kept}/${branchName}`;
-  }
-  const remote = fallbackRemote(remoteNamesOf(branches));
-  return `${remote}/${branchName}`;
-};
+  upstreamRemote?: string | null,
+): string =>
+  resolveDefaultPublishTarget(
+    branches,
+    branchName,
+    upstream,
+    upstreamResolves,
+    upstreamRemote,
+  ).target;
 
-/** The remote half of {@link defaultPublishTarget}, used to pass an explicit
- * remote to `publish_branch` when the user accepts the pre-filled target so a
- * longer slashed remote name cannot hijack it. */
+/** The remote half of {@link defaultPublishTarget}, derived from the same
+ * resolution so a longer slashed remote name cannot hijack it. */
 export const defaultPublishRemote = (
   branches: BranchInfo[],
   upstream?: string | null,
-): string => {
-  const remoteNames = remoteNamesOf(branches);
-  if (upstream) {
-    const kept = remoteNameForUpstream(upstream, remoteNames);
-    if (kept) return kept;
-  }
-  return fallbackRemote(remoteNames);
-};
+  upstreamRemote?: string | null,
+): string =>
+  resolveDefaultPublishTarget(branches, "", upstream, false, upstreamRemote).remote;
 
 const plural = (count: number) => (count === 1 ? "" : "s");

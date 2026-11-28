@@ -6,7 +6,7 @@ pub(super) mod pr_remote;
 use git2::Repository;
 
 use gh_resolved::gh_resolved_project;
-use pr_remote::{pr_remote_for, repository_fingerprint, resolved_pr_project};
+use pr_remote::{pr_remotes_for, repository_fingerprint, resolved_pr_project};
 
 use super::parsing::{
     api_host_for, classify_host, credential_host_for_url, remote_host, remote_path,
@@ -57,6 +57,11 @@ pub fn summary(path: &str) -> RepoForge {
                     .ok()
                     .map(|provider| provider.identity().capabilities);
                 let pr_project = resolved_pr_project(&repo, kind);
+                let pr_remotes = pr_project
+                    .as_ref()
+                    .map(|(authority, project)| pr_remotes_for(&repo, authority, project))
+                    .unwrap_or_default();
+                let pr_remote = pr_remotes.first().cloned();
                 return RepoForge {
                     has_remote: true,
                     kind: Some(kind.key().to_string()),
@@ -64,9 +69,8 @@ pub fn summary(path: &str) -> RepoForge {
                     host: Some(host),
                     web_url: web,
                     capabilities,
-                    pr_remote: pr_project
-                        .as_ref()
-                        .and_then(|(authority, project)| pr_remote_for(&repo, authority, project)),
+                    pr_remote,
+                    pr_remotes,
                     pr_repository_id: pr_project
                         .map(|(authority, project)| repository_fingerprint(&authority, &project)),
                 };
@@ -81,6 +85,7 @@ pub fn summary(path: &str) -> RepoForge {
         web_url: first_web,
         capabilities: None,
         pr_remote: None,
+        pr_remotes: Vec::new(),
         pr_repository_id: None,
     }
 }
@@ -714,5 +719,22 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(summary(repo.0.to_str().unwrap()).pr_remote, None);
+    }
+
+    #[test]
+    fn summary_pr_remotes_lists_all_same_repository_aliases_and_excludes_forks() {
+        let repo = TempRepo::init("pr-remotes-aliases", "https://github.com/team/app.git");
+        {
+            let opened = Repository::open(&repo.0).unwrap();
+            opened
+                .remote("mirror", "git@github.com:team/app.git")
+                .unwrap();
+            opened
+                .remote("fork", "https://github.com/fork/app.git")
+                .unwrap();
+        }
+        let forge = summary(repo.0.to_str().unwrap());
+        assert_eq!(forge.pr_remote.as_deref(), Some("origin"));
+        assert_eq!(forge.pr_remotes, vec!["origin", "mirror"]);
     }
 }

@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 1040 848" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pr-publish-flow-title pr-publish-flow-desc">
         <title id="pr-publish-flow-title">Guarding PR auto-publish and creation against repository drift</title>
-        <desc id="pr-publish-flow-desc">Sequence from opening CreatePrDialog through auto-publishing an unpublished or mismatched-upstream head branch and creating the pull request: repo_forge returns prRemote and prRepositoryId, resolvePrPublishPlan blocks cross-repository heads, publish_branch re-verifies prRepositoryId and effective push URLs before resolving credentials or running git push, and create_pull_request re-verifies prRepositoryId before submitting.</desc>
+        <desc id="pr-publish-flow-desc">Sequence from opening CreatePrDialog through auto-publishing an unpublished or mismatched-upstream head branch and creating the pull request: repo_forge returns prRemote, prRemotes, and prRepositoryId, resolvePrPublishPlan accepts same-repository remote aliases and blocks cross-repository heads, publish_branch re-verifies prRepositoryId and effective push URLs before resolving credentials or running git push, and create_pull_request re-verifies prRepositoryId before submitting.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -138,8 +138,8 @@
         <rect x="352" y="146" width="116" height="12" rx="2" fill="#f5f5f5"/>
         <text x="410" y="155" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">REPO_FORGE(PATH)</text>
 
-        <rect x="314" y="180" width="192" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="410" y="189" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PR_REMOTE + PR_REPOSITORY_ID</text>
+        <rect x="310" y="180" width="200" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="410" y="189" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PR_REMOTES + PR_REPOSITORY_ID</text>
 
         <rect x="174" y="216" width="96" height="12" rx="2" fill="#f5f5f5"/>
         <text x="222" y="225" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">RESOLVE_PLAN</text>
@@ -216,7 +216,7 @@
         <text x="880" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">git push · gh / glab / REST</text>
 
         <!-- FOOTNOTE -->
-        <text x="48" y="740" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">pr_remote_for resolves multi-pushurl and insteadOf/pushInsteadOf rules via libgit2 and fails closed on non-UTF-8 config entries or cleartext http:// URLs.</text>
+        <text x="48" y="740" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">pr_remotes_for resolves every same-repository remote alias (multi-pushurl and insteadOf/pushInsteadOf via libgit2) and fails closed on non-UTF-8 or http:// URLs.</text>
         <text x="48" y="754" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">publish_branch checks prRepositoryId and git remote get-url --push --all before transport_cred; create_pull_request re-checks prRepositoryId so tracking changes cannot retarget the PR.</text>
 
         <!-- LEGEND -->

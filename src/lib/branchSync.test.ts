@@ -5,6 +5,7 @@ import {
   defaultPublishRemote,
   defaultPublishTarget,
   publishUsesConfiguredUpstream,
+  resolveDefaultPublishTarget,
   shouldPublishNamesake,
   syncBadgeLabel,
   syncTitle,
@@ -206,6 +207,33 @@ describe("defaultPublishTarget", () => {
     expect(defaultPublishRemote([remote("origin/x")], "trunk")).toBe("origin");
     expect(defaultPublishRemote([remote("fork/y")])).toBe("fork");
   });
+
+  it("uses backend upstreamRemote so a longer slashed peer remote cannot hijack the default target", () => {
+    const branches: BranchInfo[] = [
+      { ...remote("origin/feat/base"), remote: "origin" },
+      { ...remote("origin/feat/other"), remote: "origin/feat" },
+    ];
+    expect(
+      resolveDefaultPublishTarget(branches, "feat/topic", "origin/feat/base", false, "origin"),
+    ).toEqual({
+      target: "origin/feat/topic",
+      remote: "origin",
+    });
+    expect(
+      defaultPublishTarget(branches, "feat/topic", "origin/feat/base", false, "origin"),
+    ).toBe("origin/feat/topic");
+    expect(defaultPublishRemote(branches, "origin/feat/base", "origin")).toBe("origin");
+  });
+
+  it("ignores a local '.' upstreamRemote even when the tracked local branch contains a slash", () => {
+    const branches = [remote("origin/develop")];
+    expect(
+      resolveDefaultPublishTarget(branches, "feat/topic", "feat/base", false, "."),
+    ).toEqual({
+      target: "origin/feat/topic",
+      remote: "origin",
+    });
+  });
 });
 
 describe("mismatched upstream without a same-named remote", () => {
@@ -251,17 +279,17 @@ describe("mismatched upstream without a same-named remote", () => {
 
   it("reads a remote named team/origin by its recorded remote, not its first slash", () => {
     const slashed = (name: string): BranchInfo => ({ ...remote(name), remote: "team/origin" });
-    const local = feature({
+    const sameNamed = feature({
       name: "feat",
-      upstream: "team/origin/develop",
+      upstream: "team/origin/feat",
       upstreamRemote: "team/origin",
-      sync: { status: "upToDate", upstream: "team/origin/develop", ahead: 0, behind: 0 },
+      sync: { status: "upToDate", upstream: "team/origin/feat", ahead: 0, behind: 0 },
     });
-    const published = [local, slashed("team/origin/develop"), slashed("team/origin/feat")];
+    const published = [sameNamed, slashed("team/origin/develop"), slashed("team/origin/feat")];
     const view = currentBranchSyncView({ ...summary, headBranch: "feat" }, published);
-    // `team/origin/feat` exists, so nothing needs publishing.
+    // Tracking `team/origin/feat` matches the local name, so nothing needs publishing.
     expect(view.needsPublishPrompt).toBe(false);
-    expect(shouldPublishNamesake(local, published)).toBe(false);
+    expect(shouldPublishNamesake(sameNamed, published)).toBe(false);
     // A publish goes to the remote that exists, never to `team`.
     expect(defaultPublishTarget([slashed("team/origin/develop")], "feat")).toBe("team/origin/feat");
     expect(
@@ -278,13 +306,18 @@ describe("mismatched upstream without a same-named remote", () => {
     expect(publishUsesConfiguredUpstream(main, [main, remote("origin/main")])).toBe(true);
   });
 
-  it("does not steal push when the namesake remote already exists", () => {
-    const local = feature();
-    const branches = [local, remote("origin/develop"), remote("origin/infra/deploy-bootstrap-seed")];
-    expect(currentBranchSyncView(featureSummary, branches)).toMatchObject({
-      canPush: false,
-      needsPublishPrompt: false,
+  it("still routes through Publish and hides Force push when a namesake remote already exists", () => {
+    const local = feature({
+      sync: { status: "diverged", upstream: "origin/develop", ahead: 1, behind: 2 },
     });
+    const branches = [local, remote("origin/develop"), remote("origin/infra/deploy-bootstrap-seed")];
+    const view = currentBranchSyncView(featureSummary, branches);
+    expect(view).toMatchObject({
+      canPush: true,
+      canForcePush: false,
+      needsPublishPrompt: true,
+    });
+    expect(view.title).toMatch(/instead of its own remote branch/i);
   });
 
   it.each([

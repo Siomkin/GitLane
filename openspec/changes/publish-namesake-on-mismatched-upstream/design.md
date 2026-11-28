@@ -14,9 +14,9 @@ When `pushRemote === upstreamRemote` and `branch.<name>.merge` points at a base 
 ## Goals / Non-Goals
 
 **Goals:**
-- Route ActionBar Push, Branch Context Menu Push, and Commit & Push to the Publish prompt (`<target-remote>/<local>`) for mismatched-upstream branches across `upToDate`, `ahead`, `behind`, and `diverged`, scoped to the target remote and respecting triangular push remotes.
+- Route ActionBar Push, Branch Context Menu Push, and Commit & Push to the Publish prompt (`<target-remote>/<local>`) for mismatched-upstream branches across `upToDate`, `ahead`, `behind`, and `diverged` (even if `<target-remote>/<local>` already exists), respecting triangular push remotes and deriving both prompt default and explicit remote from `upstreamRemote`.
 - Hide leased force-push in both the toolbar and the branch context menu's Danger zone whenever `shouldPublishNamesake` is true.
-- Expose `prRemote` on `RepoForge` via a pure libgit2 read so `CreatePrDialog` only auto-publishes when the destination matches the PR's target repository, and blocks cross-repository heads with an inline explanation.
+- Expose `prRemote` and `prRemotes` on `RepoForge` via a pure libgit2 read so `CreatePrDialog` auto-publishes to any remote alias matching the PR's target repository, and blocks true cross-repository heads with an inline explanation.
 
 **Non-Goals:**
 - Modifying Rust `push_destination` or `push_branch` (explicit divergent upstream pushes remain supported).
@@ -31,10 +31,11 @@ When `pushRemote === upstreamRemote` and `branch.<name>.merge` points at a base 
   - **Four IPC layers**: Impl (`forge/resolution/pr_remote.rs` + `resolution.rs`) → Command+handler (`commands/remotes.rs::repo_forge` + `lib.rs`, unchanged signature) → Types (`git/types/repo.rs::RepoForge`) → TS api (`src/lib/api/git/types/repo.ts::RepoForge`).
 - **Zustand stores**: None modified. Pure policy helpers live in `src/lib/branchSync.ts`, `src/components/chrome/overlays/menus/branchContextMenuPolicy.ts`, and `src/features/changes/commit-modal/commitComposerModel.ts`. No folder-module split is due.
 
-### 2. `shouldPublishNamesake` rules (`src/lib/branchSync.ts`)
+### 2. `shouldPublishNamesake` & default target rules (`src/lib/branchSync.ts`)
 - Live synced states covered: `"upToDate" | "ahead" | "behind" | "diverged"` (excluding `"noRemote"`, `"noUpstream"`, `"staleUpstream"`, `"unknown"`).
 - **Triangular push-remote guard**: Resolve `upstreamRemote` from `branch.upstreamRemote ?? remoteNameForUpstream(upstream, remoteNames)`. If `branch.pushRemote` is defined and `branch.pushRemote !== upstreamRemote`, return `false` — pushes already route to `branch.pushRemote` under `branch.name`, so prompting to publish would both target the wrong remote and overwrite `branch.<name>.remote`/`.merge`.
-- **Target-remote-scoped namesake lookup**: Let `targetRemote` be `upstreamRemote` when `upstreamRemote && upstreamRemote !== "."`, else the fallback publish remote (`origin` if present in `remoteNames`, else `remoteNames[0] ?? "origin"`). Check whether any remote-tracking ref in `branches` has `remoteOf(item, remoteNames) === targetRemote && shortName(item) === branch.name` (where `remoteOf` prefers `item.remote` and falls back to `remoteNameForUpstream(item.name, remoteNames)`). A namesake on another remote (`backup/feat`) no longer satisfies the check.
+- **No existing-namesake bypass**: Any non-triangular branch tracking a differently-named upstream (`tracked !== branch.name`) routes through the Publish prompt and hides leased Force push even if `<targetRemote>/<local>` already exists, because Rust `push_destination` would otherwise push or force-push onto `branch.<name>.merge`.
+- **Unified default target resolution**: `resolveDefaultPublishTarget` derives both the pre-filled `remote/branch` string and the explicit remote passed to `publish_branch` from the same source, preferring backend `upstreamRemote` (ignoring `.`) so a longer slashed peer remote like `origin/feat` cannot hijack `origin/feat/base`.
 
 ### 3. Force-push suppression in toolbar and branch menu
 - `currentBranchSyncView` (`src/lib/branchSync.ts`): `canForcePush: !publishNamesake && canForcePush(sync)`.
@@ -48,13 +49,10 @@ When `pushRemote === upstreamRemote` and `branch.<name>.merge` points at a base 
     - `ForgeKind::GitLab` / `ForgeKind::CursorOrigin` → `project_for_in(repo, kind)`
     - `ForgeKind::Bitbucket` → `bitbucket_repo_in(repo)` (on `bitbucket.org`, matching `BitbucketProvider::resolve_repository`)
     - Other / non-PR forges → `None`
-  - Walk `ordered_remote_names(repo, default_remote_name(repo).as_deref())` and return the first remote whose effective push URL (`remote.pushurl().or(remote.url())`) parses to the same `(authority, project)` (ASCII case-insensitive host and path comparison). If none matches (e.g., `gh-resolved = parent/repo` in a fork clone with only `origin`), return `None`.
-- **`useCreatePrForm.ts` and `CreatePrDialog.tsx`**:
-  - Read `prRemote = forge?.prRemote` (`undefined` means legacy/unpopulated fixture or unknown forge; `null` means a PR-capable forge whose resolved repository has no matching configured push remote).
-  - Determine the head branch's publish/push destination:
-    - When `headInfo` has no upstream (`!headInfo.upstream`): if `prRemote` is a string, publish to `${prRemote}/${head}` (unless an explicit `headInfo.pushRemote` is set and differs from `prRemote`, which is a cross-repo mismatch); if `prRemote === null`, block as cross-repo; if `prRemote === undefined`, keep existing `defaultPublishTarget(branches, head)`.
-    - When `shouldPublishNamesake(headInfo, branches)` is true: its target remote is the branch's resolved publish target remote (`defaultPublishTarget(branches, head, headInfo.upstream, false)`'s remote). If `prRemote === undefined || targetRemote === prRemote`, publish to `${targetRemote}/${head}`; otherwise block as cross-repo.
-    - When `prRemote` is known (string or `null`) and the branch's push destination (`headInfo.pushRemote ?? headInfo.upstreamRemote`) does not match `prRemote` and `${prRemote}/${head}` does not exist on `prRemote` (e.g., fork workflow pushing to `origin` while PRs target `upstream`): block as cross-repo instead of submitting a bare `--head`.
+  - Walk `ordered_remote_names(repo, default_remote_name(repo).as_deref())` and collect every remote (`pr_remotes_for` → `prRemotes`, with `prRemote` set to the first match) whose effective push URLs all parse to the same `(authority, project)` (ASCII case-insensitive host and path comparison). If none matches (e.g., `gh-resolved = parent/repo` in a fork clone with only `origin`), `prRemotes` is empty and `prRemote` is `None`.
+- **`prTargets.ts`, `useCreatePrForm.ts`, and `CreatePrDialog.tsx`**:
+  - Read `prRemote = forge?.prRemote` and `prRemotes = forge?.prRemotes` (`undefined` means legacy/unpopulated fixture or unknown forge; `null`/empty means a PR-capable forge whose resolved repository has no matching configured push remote).
+  - Accept any remote in `prRemotes` (so same-repository remote aliases like `mirror` alongside `origin` are allowed and publish to `<alias>/<head>`), while blocking true cross-repository/fork remotes not in `prRemotes`.
   - When blocked (`crossRepoError: string | null`): `publishTarget` is `null`, `canSubmit` is `false`, and `CreatePrDialog` renders the inline explanation (e.g., `"Cross-repository pull requests are not supported — push <head> to <prRemote> or change the pull request repository."` / `"Cross-repository pull requests are not supported — no configured remote pushes to the resolved pull request repository."`).
 
 ### 5. File-size ceiling check

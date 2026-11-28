@@ -18,17 +18,20 @@ use super::{
     bitbucket_repo_in, default_remote_name, github_project_in, ordered_remote_names, project_for_in,
 };
 
-/// The configured remote name whose effective push URLs (`pushurl` entries,
-/// else `url` entries, after applying Git's `url.<base>.pushInsteadOf` and
-/// `url.<base>.insteadOf` rewrites) all match the repository resolved by the
-/// active PR provider, or `None` when no configured remote pushes
-/// exclusively to that repository.
-pub(super) fn pr_remote_for(
+/// Every configured remote name (default remote first, then config order)
+/// whose effective push URLs (`pushurl` entries, else `url` entries, after
+/// applying Git's `url.<base>.pushInsteadOf` and `url.<base>.insteadOf`
+/// rewrites) all match the repository resolved by the active PR provider.
+/// Empty when no configured remote pushes exclusively to that repository.
+pub(super) fn pr_remotes_for(
     repo: &Repository,
     target_authority: &str,
     target_project: &str,
-) -> Option<String> {
-    let cfg = repo.config().ok()?;
+) -> Vec<String> {
+    let Ok(cfg) = repo.config() else {
+        return Vec::new();
+    };
+    let mut matching = Vec::new();
     for name in ordered_remote_names(repo, default_remote_name(repo).as_deref()) {
         let Some((urls, is_explicit_pushurl)) = effective_push_urls(repo, &cfg, &name) else {
             continue;
@@ -52,10 +55,10 @@ pub(super) fn pr_remote_for(
                     .is_some_and(|url| url_matches_target(url, target_authority, target_project))
             })
         {
-            return Some(name);
+            matching.push(name);
         }
     }
-    None
+    matching
 }
 
 fn effective_push_urls(

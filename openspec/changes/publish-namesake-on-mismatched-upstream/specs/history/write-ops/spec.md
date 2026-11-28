@@ -26,7 +26,7 @@ When the current local branch has an upstream, is diverged, and is not covered b
 
 ### Requirement: Pushing a branch that tracks a differently-named remote publishes its own name
 
-When a local branch tracks a differently-named remote branch, has no explicit push remote overriding that upstream remote, and has no remote-tracking ref with its own name on that target remote, GitLane SHALL route Push (toolbar, branch menu, and Commit & Push) to the Publish prompt pre-filled with `<target-remote>/<local-branch>` across `upToDate`, `ahead`, `behind`, and `diverged`, and MUST hide leased force-push from both the toolbar and the branch menu.
+When a local branch tracks a differently-named remote branch and has no explicit push remote overriding that upstream remote, GitLane SHALL route Push (toolbar, branch menu, and Commit & Push) to the Publish prompt pre-filled with `<target-remote>/<local-branch>` (derived from the backend-resolved upstream remote so a longer slashed remote name cannot hijack it) across `upToDate`, `ahead`, `behind`, and `diverged` — even when `<target-remote>/<local-branch>` already exists — and MUST hide leased force-push from both the toolbar and the branch menu.
 
 #### Scenario: Local feature branch is ahead of a differently-named remote base
 
@@ -64,4 +64,9 @@ When a local branch tracks a differently-named remote branch, has no explicit pu
 #### Scenario: Namesake already exists on the target remote
 
 - **WHEN** `feat/mcp-apps-subscriptions` tracks `origin/develop` and `origin/feat/mcp-apps-subscriptions` already exists
-- **THEN** GitLane does not hijack Push into a namesake publish prompt and keeps standard upstream sync behavior
+- **THEN** GitLane still routes Push to the Publish prompt pre-filled with `origin/feat/mcp-apps-subscriptions` and hides Force push so neither action pushes onto `origin/develop`
+
+#### Scenario: Slashed peer remote does not hijack default publish target
+
+- **WHEN** `feat/topic` tracks `origin/feat/base` on remote `origin` and a second fetched remote named `origin/feat` exists
+- **THEN** the Publish prompt pre-fills `origin/feat/topic` and submits explicit remote `origin` rather than `origin/feat/feat/topic` on `origin/feat`

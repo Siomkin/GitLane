@@ -134,4 +134,45 @@ describe("ActionBar mismatched-upstream publish & fork routing", () => {
     expect(useUi.getState().prompt).toBeNull();
     expect(push).toHaveBeenCalledOnce();
   });
+
+  it("keeps origin as the default publish target when a slashed peer remote origin/feat has fetched refs", () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      summary: { ...SUMMARY, headBranch: "feat/topic" },
+      publishBranch,
+      branches: [
+        localBranch({
+          name: "feat/topic",
+          upstream: "origin/feat/base",
+          upstreamRemote: "origin",
+          pushRemote: "origin",
+          sync: { status: "ahead", upstream: "origin/feat/base", ahead: 1, behind: 0 },
+        }),
+        {
+          name: "origin/feat/base",
+          kind: "remote",
+          target: "bbb",
+          isHead: false,
+          upstream: null,
+          remote: "origin",
+        },
+        {
+          name: "origin/feat/other",
+          kind: "remote",
+          target: "ccc",
+          isHead: false,
+          upstream: null,
+          remote: "origin/feat",
+        },
+      ],
+    });
+
+    render(<ActionBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Push$/i }));
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.defaultValue).toBe("origin/feat/topic");
+    prompt!.onSubmit("origin/feat/topic");
+    expect(publishBranch).toHaveBeenCalledWith("feat/topic", "origin/feat/topic", "origin");
+  });
 });

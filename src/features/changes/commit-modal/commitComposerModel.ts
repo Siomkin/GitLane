@@ -13,9 +13,8 @@ import {
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import {
   currentBranchSyncView,
-  defaultPublishRemote,
-  defaultPublishTarget,
   publishUsesConfiguredUpstream,
+  resolveDefaultPublishTarget,
 } from "@/lib/branchSync";
 import { fullCommitMessage } from "@/lib/commitMessage";
 import { isRemoteLocator, REMOTE_UNAVAILABLE } from "@/lib/paths";
@@ -204,12 +203,19 @@ export function publishPromptDetails(
     (candidate) => candidate.kind === BranchKind.Local && candidate.name === branch,
   );
   const upstreamResolves = publishUsesConfiguredUpstream(info, branches);
+  const { target: defaultValue, remote: defaultRemote } = resolveDefaultPublishTarget(
+    branches,
+    branch,
+    info?.upstream,
+    upstreamResolves,
+    info?.upstreamRemote,
+  );
   return {
     title: `Publish ${branch}`,
     message: `Remote branch for ${branch} to push to and pull from.`,
     placeholder: "origin/branch",
-    defaultValue: defaultPublishTarget(branches, branch, info?.upstream, upstreamResolves),
-    defaultRemote: defaultPublishRemote(branches, info?.upstream),
+    defaultValue,
+    defaultRemote,
     confirmLabel: "Publish",
   };
 }

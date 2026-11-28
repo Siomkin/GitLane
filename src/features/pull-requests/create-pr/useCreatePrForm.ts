@@ -169,10 +169,10 @@ export function useCreatePrForm() {
     setTab(DESCRIPTION_TAB.Write);
   };
 
-  // A branch with no upstream (or tracking a differently-named base with no
-  // namesake remote yet) has no head ref on the forge yet. Auto-publish it only
-  // when its destination matches the PR's resolved target repository; otherwise
-  // block submission and explain that cross-repository PRs are unsupported.
+  // A branch with no upstream (or tracking a differently-named base) has no
+  // same-named upstream tracking yet. Auto-publish it only when its destination
+  // matches the PR's resolved target repository; otherwise block submission
+  // and explain that cross-repository PRs are unsupported.
   const headInfo = branches.find((b) => b.kind === BranchKind.Local && b.name === head);
   const { publishTarget, publishRemote, crossRepoError: routingError, awaitingForge } = resolvePrPublishPlan({
     head,
@@ -181,6 +181,7 @@ export function useCreatePrForm() {
     remotes,
     forgeResolved: forge !== null,
     prRemote: forge?.prRemote,
+    prRemotes: forge?.prRemotes,
   });
 
   const currentPrRepositoryId = forge?.prRepositoryId ?? undefined;

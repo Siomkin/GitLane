@@ -24,6 +24,11 @@ When opening a pull request from a head branch that is unpublished or covered by
 - **THEN** the dialog disables pull request creation and explains that cross-repository pull requests are not supported
 - **AND** GitLane does not publish the branch or submit a pull request
 
+#### Scenario: Same-repository remote alias is accepted for Create PR
+
+- **WHEN** both `origin` and `mirror` push to the resolved PR repository and an unpublished branch is configured to push to `mirror`
+- **THEN** the dialog allows auto-publishing to `mirror/<head>` and creating the pull request instead of blocking it as a cross-repository head
+
 #### Scenario: The effective push destination changed after the dialog resolved the repository
 
 - **WHEN** Git resolves an effective push URL outside the repository shown by the dialog
