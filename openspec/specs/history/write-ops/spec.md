@@ -52,12 +52,10 @@ When both the drag source and the drop target are local branches, GitLane MUST r
 
 ### Requirement: A diverged rewritten branch can be published with force-with-lease from the push chrome
 
-When the current local branch has an upstream and its sync status is diverged, GitLane MUST offer a force-push that uses `--force-with-lease` (preview, then confirm, then push) from the same chrome where Push normally lives. Regular Push MUST stay disabled for that diverged state. GitLane MUST NOT run a leased force-push unless the user confirms. If the remote branch moved after the preview, the force-push MUST abort without overwriting that remote. After a successful leased force-push, the local branch and its upstream MUST no longer appear as two divergent tips for that rewrite.
-
-The existing branch-menu force-push MAY remain. This requirement is that the user does not have to find a danger-zone item in order to publish a rebase.
+When the current local branch has an upstream, is diverged, and is not covered by the mismatched-upstream namesake publish rule, GitLane MUST offer leased force-push (`--force-with-lease`: preview, confirm, push) in the push chrome and keep regular Push disabled. GitLane MUST NOT force-push without confirmation and MUST abort if the remote moved. Branch-menu force-push MAY remain outside that rule and MUST be hidden when covered by it.
 
 #### Scenario: Action bar offers force-push when the current branch is diverged
-- **WHEN** the current branch tracks an upstream and is diverged from it (ahead and behind)
+- **WHEN** the current branch tracks an upstream not covered by the mismatched-upstream namesake publish rule and is diverged from it (ahead and behind)
 - **THEN** regular Push is disabled and a Force push control is enabled in the same push chrome
 
 #### Scenario: Confirmed force-push updates the remote feature after a rebase
@@ -755,3 +753,50 @@ failure, or the server-side fix for a repository opened over SSH.
 #### Scenario: Local delete hits a stale index lock
 - **WHEN** the remote delete succeeds and the local delete fails on `.git/index.lock`
 - **THEN** the message first says `origin/feature` was deleted and `feature` was kept, then gives the index-lock explanation
+
+### Requirement: Pushing a branch that tracks a differently-named remote publishes its own name
+
+When a local branch tracks a differently-named remote branch and has no explicit push remote overriding that upstream remote, GitLane SHALL route Push (toolbar, branch menu, and Commit & Push) to the Publish prompt pre-filled with `<target-remote>/<local-branch>` (derived from the backend-resolved upstream remote so a longer slashed remote name cannot hijack it) across `upToDate`, `ahead`, `behind`, and `diverged` — even when `<target-remote>/<local-branch>` already exists — and MUST hide leased force-push from both the toolbar and the branch menu.
+
+#### Scenario: Local feature branch is ahead of a differently-named remote base
+
+- **WHEN** `feat/mcp-apps-subscriptions` tracks `origin/develop` with no overriding push remote, is 1 commit ahead of `origin/develop`, and `origin/feat/mcp-apps-subscriptions` does not exist
+- **THEN** toolbar Push and branch-menu Push are enabled and open the Publish prompt pre-filled with `origin/feat/mcp-apps-subscriptions`
+- **AND** GitLane does not push `feat/mcp-apps-subscriptions` directly onto `origin/develop`
+
+#### Scenario: Commit and Push on a branch tracking a differently-named remote base
+
+- **WHEN** the user runs Commit & Push on `feat/mcp-apps-subscriptions` while it tracks `origin/develop` and `origin/feat/mcp-apps-subscriptions` does not exist
+- **THEN** GitLane opens the Publish prompt pre-filled with `origin/feat/mcp-apps-subscriptions` instead of pushing directly to `origin/develop`
+
+#### Scenario: Diverged branch tracking a differently-named remote hides force-push in toolbar and branch menu
+
+- **WHEN** `feat/mcp-apps-subscriptions` is checked out, tracks `origin/develop` with no overriding push remote, is both ahead of and behind `origin/develop`, and `origin/feat/mcp-apps-subscriptions` does not exist
+- **THEN** neither the toolbar nor the branch context menu offers Force push
+- **AND** Push opens the Publish prompt pre-filled with `origin/feat/mcp-apps-subscriptions`
+
+#### Scenario: Local feature branch is behind a differently-named remote base
+
+- **WHEN** `feat/mcp-apps-subscriptions` tracks `origin/develop`, is behind `origin/develop`, and `origin/feat/mcp-apps-subscriptions` does not exist
+- **THEN** Push is enabled and opens the Publish prompt pre-filled with `origin/feat/mcp-apps-subscriptions`
+
+#### Scenario: Triangular fork workflow preserves explicit push remote
+
+- **WHEN** `feat/mcp-apps-subscriptions` tracks `upstream/develop`, has `branch.feat/mcp-apps-subscriptions.pushRemote` (or `remote.pushDefault`) set to `origin`, and is ahead of `upstream/develop`
+- **THEN** Push does not open a publish prompt targeting `upstream/feat/mcp-apps-subscriptions` and does not rewrite the branch's upstream tracking
+- **AND** ordinary Push targets `origin/feat/mcp-apps-subscriptions`
+
+#### Scenario: Namesake on an unrelated remote does not bypass the guard
+
+- **WHEN** `feat/mcp-apps-subscriptions` tracks `origin/develop`, is ahead of `origin/develop`, `backup/feat/mcp-apps-subscriptions` exists on another remote, and `origin/feat/mcp-apps-subscriptions` does not exist
+- **THEN** Push still opens the Publish prompt pre-filled with `origin/feat/mcp-apps-subscriptions` instead of pushing onto `origin/develop`
+
+#### Scenario: Namesake already exists on the target remote
+
+- **WHEN** `feat/mcp-apps-subscriptions` tracks `origin/develop` and `origin/feat/mcp-apps-subscriptions` already exists
+- **THEN** GitLane still routes Push to the Publish prompt pre-filled with `origin/feat/mcp-apps-subscriptions` and hides Force push so neither action pushes onto `origin/develop`
+
+#### Scenario: Slashed peer remote does not hijack default publish target
+
+- **WHEN** `feat/topic` tracks `origin/feat/base` on remote `origin` and a second fetched remote named `origin/feat` exists
+- **THEN** the Publish prompt pre-fills `origin/feat/topic` and submits explicit remote `origin` rather than `origin/feat/feat/topic` on `origin/feat`
